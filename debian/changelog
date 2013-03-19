@@ -1,3 +1,9 @@
+reaver (1.4-2kali3) kali; urgency=low
+
+  * Reaver patch added, as per BugID 123.
+
+ -- Mati Aharoni <muts@kali.org>  Tue, 19 Mar 2013 06:35:53 -0400
+
 reaver (1.4-2kali2) kali; urgency=low
 
   * Removed desktop file
