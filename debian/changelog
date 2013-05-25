@@ -1,3 +1,11 @@
+reaver (1.4-2kali6) kali; urgency=low
+
+  * Patches added, see BugIDs 356, 357
+  * I jumped to 1.4-2kali6 since in the repo 1.4-2kali4 was already present
+    (to avoid conflicts)
+
+ -- Emanuele Acri <crossbower@kali.org>  Sat, 25 May 2013 22:26:19 +0200
+
 reaver (1.4-2kali3) kali; urgency=low
 
   * Reaver patch added, as per BugID 123.
