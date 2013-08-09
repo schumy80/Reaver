@@ -1,7 +1,7 @@
 Source: reaver
 Section: net
 Priority: extra
-Maintainer: Bartosz Fenski <fenio@debian.org>
+Maintainer: Devon Kearns <dookie@kali.org>
 Build-Depends: debhelper (>= 8.0.0), libpcap-dev, libsqlite3-dev
 Standards-Version: 3.9.2
 Homepage: http://code.google.com/p/reaver-wps/

@@ -1,3 +1,9 @@
+reaver (1.4-2kali7) kali; urgency=low
+
+  * Created a dirs file to make the etc/reaver directory
+
+ -- Devon Kearns <dookie@kali.org>  Fri, 09 Aug 2013 11:38:26 -0600
+
 reaver (1.4-2kali6) kali; urgency=low
 
   * Patches added, see BugIDs 356, 357
