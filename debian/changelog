@@ -1,3 +1,9 @@
+reaver (1.4-2kali9) kali; urgency=low
+
+  * Added watch file (Closes: 0000883)
+
+ -- Devon Kearns <dookie@kali.org>  Thu, 09 Jan 2014 15:03:44 -0700
+
 reaver (1.4-2kali8) kali; urgency=low
 
   * Added watch file (Closes: 0000883)
