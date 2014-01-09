@@ -1,3 +1,9 @@
+reaver (1.4-2kali8) kali; urgency=low
+
+  * Added watch file (Closes: 0000883)
+
+ -- Devon Kearns <dookie@kali.org>  Thu, 09 Jan 2014 14:37:39 -0700
+
 reaver (1.4-2kali7) kali; urgency=low
 
   * Created a dirs file to make the etc/reaver directory
