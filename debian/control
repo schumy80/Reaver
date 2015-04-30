@@ -8,7 +8,7 @@ Homepage: http://code.google.com/p/reaver-wps/
 
 Package: reaver
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, pixiewps
 Description: brute force attack tool against Wifi Protected Setup PIN number
  Reaver performs a brute force attack against an access point's WiFi 
  Protected Setup pin number. 
