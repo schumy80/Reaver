@@ -1,3 +1,10 @@
+reaver (1.5.2.1-1kali1) kali; urgency=low
+
+  * Upstream import
+  * Inlcudes the parsing fix required with pixiewps 1.1
+
+ -- Mati Aharoni <muts@kali.org>  Mon, 04 May 2015 05:42:11 -0400
+
 reaver (1.5.2-1kali2) kali; urgency=low
 
   * Added pixiewps as a dependency
