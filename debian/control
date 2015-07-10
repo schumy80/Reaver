@@ -4,7 +4,7 @@ Priority: extra
 Maintainer: Devon Kearns <dookie@kali.org>
 Build-Depends: debhelper (>= 8.0.0), libpcap-dev, libsqlite3-dev
 Standards-Version: 3.9.2
-Homepage: http://code.google.com/p/reaver-wps/
+Homepage: https://github.com/t6x/reaver-wps-fork-t6x
 
 Package: reaver
 Architecture: any

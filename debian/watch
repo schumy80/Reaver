@@ -1,0 +1,3 @@
+version=3
+opts="filenamemangle=s/(?:.*)?v?(\d.*)\.tar\.gz/reaver-$1.tar.gz/" \
+https://github.com/t6x/reaver-wps-fork-t6x/tags (?:.*/)?v?(\d.*)\.tar\.gz
