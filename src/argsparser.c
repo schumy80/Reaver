@@ -1,6 +1,7 @@
 /*
  * Reaver - Command line processing functions
  * Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>
+ * Copyright (c) 2016, Koko Software, Adrian Warecki <bok@kokosoftware.pl>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,6 +33,7 @@
  */
 
 #include "argsparser.h"
+#include "globule.h"
 
 /* Processes Reaver command line options */
 int process_arguments(int argc, char **argv)
@@ -39,9 +41,10 @@ int process_arguments(int argc, char **argv)
     int ret_val = EXIT_SUCCESS;
     int c = 0, channel = 0;
     int long_opt_index = 0;
+    FILE *out_file;
     char bssid[MAC_ADDR_LEN] = { 0 };
     char mac[MAC_ADDR_LEN] = { 0 };
-    char *short_options = "W:K:b:e:m:i:t:d:c:T:x:r:g:l:o:p:s:C:1:2:ZaA5ELfnqvDShwXNP0";
+    char *short_options = "W:K:b:e:m:i:t:d:c:T:x:r:g:l:o:p:s:C:1:2:F:R:ZA5ELfnqvDShwXNPH0I";
     struct option long_options[] = {
 		{ "generate-pin", required_argument, NULL, 'W' },
 		{ "stop-in-m1", no_argument, NULL, '0' },
@@ -55,6 +58,9 @@ int process_arguments(int argc, char **argv)
         { "m57-timeout", required_argument, NULL, 'T' },
         { "delay", required_argument, NULL, 'd' },
         { "lock-delay", required_argument, NULL, 'l' },
+        { "fake-delay", required_argument, NULL, 'F' },
+        { "fake-reason", required_argument, NULL, 'R' },
+        { "ignore-reason", no_argument, NULL, 'I' },
         { "fail-wait", required_argument, NULL, 'x' },
         { "channel", required_argument, NULL, 'c' },
         { "session", required_argument, NULL, 's' },
@@ -70,7 +76,6 @@ int process_arguments(int argc, char **argv)
         { "no-nacks", no_argument, NULL, 'N' },
         { "eap-terminate", no_argument, NULL, 'E' },
         { "dh-small", no_argument, NULL, 'S' },
-        { "auto", no_argument, NULL, 'a' },
         { "fixed", no_argument, NULL, 'f' },
         { "daemonize", no_argument, NULL, 'D' },
         { "5ghz", no_argument, NULL, '5' },
@@ -81,22 +86,24 @@ int process_arguments(int argc, char **argv)
         { "exhaustive", no_argument, NULL, 'X' },
         { "help", no_argument, NULL, 'h' },
 	{ "pixiedust-loop", no_argument, NULL, 'P' },
+	{ "pixiedust-log", no_argument, NULL, 'H' },
         { 0, 0, 0, 0 }
     };
 
     /* Since this function may be called multiple times, be sure to set opt index to 0 each time */
     optind = 0;
+    opterr = 0;
 
     while((c = getopt_long(argc, argv, short_options, long_options, &long_opt_index)) != -1)
     {
         switch(c)
         {
-			case 'W':
-                //set valor para auto get pass
+            case 'W':
+                //set default pin generator
                 set_op_gen_pin(atoi(optarg));
                 break;
             case '0':
-                //set valor para auto get pass
+                //set stop in m1
                 set_stop_in_m1(1);
                 break;
             case 'Z':
@@ -119,14 +126,14 @@ int process_arguments(int argc, char **argv)
                 set_iface(optarg);
                 break;
             case 'b':
-                str2mac((unsigned char *) optarg, (unsigned char *) &bssid);
+                str2mac(optarg, (unsigned char *) &bssid);
                 set_bssid((unsigned char *) &bssid);
                 break;
             case 'e':
                 set_ssid(optarg);
                 break;
             case 'm':
-                str2mac((unsigned char *) optarg, (unsigned char *) &mac);
+                str2mac(optarg, (unsigned char *) &mac);
                 set_mac((unsigned char *) &mac);
                 break;
             case 't':
@@ -169,11 +176,14 @@ int process_arguments(int argc, char **argv)
             case 'L':
                 set_ignore_locks(1);
                 break;
-            case 'a':       
-                set_auto_detect_options(1); 
-                break;
             case 'o':
-                set_log_file(fopen(optarg, "w"));
+                out_file = fopen(optarg, "w");
+                if (out_file != NULL) {
+                    set_log_file(out_file);
+                } else {
+                    fprintf(stderr, "[-] Cannot write to log file!\n");
+                    ret_val = EXIT_FAILURE;
+                }
                 break;
             case 'x':
                 set_fail_delay(atoi(optarg));
@@ -182,7 +192,7 @@ int process_arguments(int argc, char **argv)
                 parse_recurring_delay(optarg);
                 break;
             case 'g':
-                set_max_pin_attempts(atoi(optarg));
+                set_quit_pin_attempts(atoi(optarg));
                 break;
             case 'D':
                 daemonize();
@@ -217,6 +227,19 @@ int process_arguments(int argc, char **argv)
 	    case 'P':
                 set_pixie_loop(1);
                 break;
+	    case 'H':
+                set_pixie_log(1);
+                break;
+            case 'F':
+                set_fake_nack_delay( atoi(optarg) );
+                break;
+            case 'I':
+                set_ignore_nack_reason(1);
+                break;
+            case 'R':
+                set_fake_nack_reason( strtol(optarg, NULL, 0) );
+                set_ignore_nack_reason(1);
+                break;
             default:
                 ret_val = EXIT_FAILURE;
         }
@@ -237,6 +260,10 @@ void init_default_settings(void)
     set_max_pin_attempts(P1_SIZE + P2_SIZE);
     set_delay(DEFAULT_DELAY);
     set_lock_delay(DEFAULT_LOCK_DELAY);
+    set_fake_nack_delay(DEFAULT_FK_NACK_DELAY);
+    set_last_nack_reason(-1);
+    set_fake_nack_reason(-1);
+    set_ignore_nack_reason(0);
     set_key_status(KEY1_WIP);
     set_debug(INFO);
     set_auto_channel_select(1);
@@ -248,8 +275,10 @@ void init_default_settings(void)
     set_op_pixie(0);
     set_op_autopass(1);
     set_pixie_loop(0);
-	set_stop_in_m1(0);
-	set_op_gen_pin(0);
+    set_pixie_log(0);
+    set_stop_in_m1(0);
+    set_op_gen_pin(0);
+    set_quit_pin_attempts(-1);
 }
 
 /* Parses the recurring delay optarg */
@@ -302,48 +331,3 @@ void parse_static_pin(char *pin)
     }
 }
 
-/* Process auto-applied options from the database. read_ap_beacon should be called before this. */
-void process_auto_options(void)
-{
-    char **argv = NULL;
-    int argc = 0, i = 0;
-    char *bssid = NULL, *ssid = NULL;
-
-    if(get_auto_detect_options())
-    {
-        bssid = (char *) mac2str(get_bssid(), ':');
-
-
-        if(bssid)
-        {
-            /* If we didn't get the SSID from the beacon packet, check the database */
-            if(get_ssid() == NULL)
-            {
-                ssid = get_db_ssid(bssid);
-                if(ssid)
-                {
-                    set_ssid(ssid);
-                    free(ssid);
-                }
-            }
-
-            argv = auto_detect_settings(bssid, &argc);
-            if(argc > 1 && argv != NULL)
-            {
-                /* Process the command line arguments */
-                process_arguments(argc, argv);
-
-                /* Clean up argument memory allocation */
-                for(i=0; i<argc; i++)
-                {
-                    free(argv[i]);
-                }
-                free(argv);
-            }
-
-            free(bssid);
-        }
-    }
-
-    return;
-}

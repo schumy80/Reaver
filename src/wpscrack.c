@@ -1,6 +1,7 @@
 /*
  * Reaver - Main and usage functions
  * Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>
+ * Copyright (c) 2016, Koko Software, Adrian Warecki <bok@kokosoftware.pl>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -37,13 +38,12 @@
 
 int main(int argc, char **argv)
 {
-    int ret_val = EXIT_FAILURE, r = 0;
+    int ret_val = EXIT_FAILURE;
     time_t start_time = 0, end_time = 0;
     struct wps_data *wps = NULL;
 
 
     globule_init();
-    sql_init();
     init_default_settings();
 
     int cont_arg_rev;
@@ -56,7 +56,7 @@ int main(int argc, char **argv)
 
     printf("\nReaver v%s WiFi Protected Setup Attack Tool\n", PACKAGE_VERSION);
     printf("Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>\n");
-    printf("mod by t6_x <t6_x@hotmail.com> & DataHead & Soxrok2212\n\n");
+    printf("mod by t6_x <t6_x@hotmail.com> & DataHead & Soxrok2212 & Wiire & AAnarchYY & KokoSoft\n\n");
 
     if(argc < 2)
     {
@@ -88,8 +88,8 @@ int main(int argc, char **argv)
         }
     }
 
-    /* Sanity checking on the message timeout value */	
-    if(get_m57_timeout() > M57_MAX_TIMEOUT) 
+    /* Sanity checking on the message timeout value */
+    if(get_m57_timeout() > M57_MAX_TIMEOUT)
     {
         set_m57_timeout(M57_MAX_TIMEOUT);
     }
@@ -130,12 +130,12 @@ int main(int argc, char **argv)
         /* Run user-supplied command */
         if(get_exec_string())
         {
-            r = system(get_exec_string());
+            system(get_exec_string());
         }
 
         ret_val = EXIT_SUCCESS;
     }
-    else 
+    else
     {
         cprintf(CRITICAL, "[-] Failed to recover WPA key\n");
     }
@@ -165,13 +165,12 @@ int usage(char *prog_name)
     fprintf(stderr, "\t-s, --session=<file>            Restore a previous session file\n");
     fprintf(stderr, "\t-C, --exec=<command>            Execute the supplied command upon successful pin recovery\n");
     fprintf(stderr, "\t-D, --daemonize                 Daemonize reaver\n");
-    fprintf(stderr, "\t-a, --auto                      Auto detect the best advanced options for the target AP\n");
     fprintf(stderr, "\t-f, --fixed                     Disable channel hopping\n");
     fprintf(stderr, "\t-5, --5ghz                      Use 5GHz 802.11 channels\n");
     fprintf(stderr, "\t-v, --verbose                   Display non-critical warnings (-vv for more)\n");
     fprintf(stderr, "\t-q, --quiet                     Only display critical messages\n");
     //fprintf(stderr, "\t-K, --pixie-dust                Test Pixie Dust [1] Basic(-S) [2] With E-Once(-S) [3] With PKR \n");
-    fprintf(stderr, "\t-K  --pixie-dust=<number>       [1] Run pixiewps with PKE, PKR, E-Hash1, E-Hash2 and E-Nonce (Ralink, Broadcom, Realtek)\n");
+    fprintf(stderr, "\t-K  --pixie-dust=<number>       [1] Run pixiewps with PKE, PKR, E-Hash1, E-Hash2 and E-Nonce (Ralink, Broadcom & Realtek)\n");
     fprintf(stderr, "\t-Z, --no-auto-pass              Do NOT run reaver to auto retrieve WPA password if Pixiewps attack is successful\n");
     fprintf(stderr, "\t-h, --help                      Show help\n");
 
@@ -179,6 +178,9 @@ int usage(char *prog_name)
     fprintf(stderr, "\t-p, --pin=<wps pin>             Use the specified 4 or 8 digit WPS pin\n");
     fprintf(stderr, "\t-d, --delay=<seconds>           Set the delay between pin attempts [%d]\n", DEFAULT_DELAY);
     fprintf(stderr, "\t-l, --lock-delay=<seconds>      Set the time to wait if the AP locks WPS pin attempts [%d]\n", DEFAULT_LOCK_DELAY);
+    fprintf(stderr, "\t-F, --fake-delay=<seconds>      Set the time to sleep after received fake NACK [%d]\n",DEFAULT_FK_NACK_DELAY);
+    fprintf(stderr, "\t-R, --fake-reason=<nack reason> Specifies the reason code for NACK used in the FAKE NACK\n");
+    fprintf(stderr, "\t-I, --ignore-reason             Ignore change of reason code for NACK\n");
     fprintf(stderr, "\t-g, --max-attempts=<num>        Quit after num pin attempts\n");
     fprintf(stderr, "\t-x, --fail-wait=<seconds>       Set the time to sleep after %d unexpected failures [0]\n", WARN_FAILURE_COUNT);
     fprintf(stderr, "\t-r, --recurring-delay=<x:y>     Sleep for y seconds every x pin attempts\n");
@@ -195,10 +197,11 @@ int usage(char *prog_name)
     fprintf(stderr, "\t-1, --p1-index                  Set initial array index for the first half of the pin [False]\n");
     fprintf(stderr, "\t-2, --p2-index                  Set initial array index for the second half of the pin [False]\n");
     fprintf(stderr, "\t-P, --pixiedust-loop            Set into PixieLoop mode (doesn't send M4, and loops through to M3) [False]\n");
-    fprintf(stderr, "\t-W, --generate-pin              Default Pin Generator by devttys0 team [1] Belkin [2] D-Link\n");
+    fprintf(stderr, "\t-W, --generate-pin              Default Pin Generator [1] Belkin [2] D-Link [3] Zyxel\n");
+    fprintf(stderr, "\t-H, --pixiedust-log             Enables logging of sequence completed PixieHashes\n");
 
-	
-    fprintf(stderr, "\nExample:\n\t%s -i mon0 -b 00:90:4C:C1:AC:21 -vv -K 1\n\n", prog_name);
+
+    fprintf(stderr, "\nExample:\n\t%s -i wlan0mon -b 00:90:4C:C1:AC:21 -vvv -K 1\n\n", prog_name);
 
     return EXIT_FAILURE;
 }

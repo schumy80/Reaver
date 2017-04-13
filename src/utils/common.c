@@ -15,6 +15,7 @@
 #include "includes.h"
 
 #include "common.h"
+#include "wps.h"
 
 
 static int hex2num(char c)
@@ -412,23 +413,6 @@ int char2int(char c)
 }
  
 
-/* http://www.devttys0.com/2015/04/reversing-belkins-wps-pin-algorithm/ */
-/* Generates a standard WPS checksum from a 7 digit pin */
-int wps_checksum(int pin)
-{
-    int div = 0;
-
-    while(pin)
-    {
-        div += 3 * (pin % 10);
-        pin /= 10;
-        div += pin % 10;
-        pin /= 10;
-    }
-
-    return ((10 - div % 10) % 10);
-}
-
 unsigned int hexToInt(const char *hex)
 {
 	unsigned int result = 0;
@@ -453,7 +437,7 @@ return result;
 /* Belkin Default Pin generator created by devttys0 team */
 /* http://www.devttys0.com/2015/04/reversing-belkins-wps-pin-algorithm/ */ 
 /* Munges the MAC and serial numbers to create a WPS pin */
-int pingen_belkin(char *mac, char *serial, int len_serial, int add)
+int pingen_belkin(const char *mac, const char *serial, int len_serial, int add)
 {
     #define NIC_NIBBLE_0    0
     #define NIC_NIBBLE_1    1
@@ -530,7 +514,7 @@ int pingen_belkin(char *mac, char *serial, int len_serial, int add)
 	//pingen mac init c83a35
 	//printf("WPS PIN is: %07d%d\n",4402328%10000000,wps_checksum(4402328%10000000));
     
-    return (pin * 10) + wps_checksum(pin);
+    return (pin * 10) + wps_pin_checksum(pin);
 }
 
 
@@ -543,13 +527,10 @@ Tactical Network Solutions
 http://www.devttys0.com/2014/10/reversing-d-links-wps-pin-algorithm/
 */
 
-int pingen_dlink(char *mac, char *serial, int len_serial, int add)
+int pingen_dlink(char *mac, int add)
 {
-    int mac_len=0, serial_len=0, nic=0, pin=0;
+    int nic=0, pin=0;
     char buff[10];
-
-    mac_len = strlen(mac);
-    serial_len = len_serial;
 
     nic = hexToInt(strncpy(buff, mac+6, sizeof(buff)));
     nic = nic + add;
@@ -568,5 +549,62 @@ int pingen_dlink(char *mac, char *serial, int len_serial, int add)
 		
     }
 
-    return (pin * 10) + wps_checksum(pin);
+    return (pin * 10) + wps_pin_checksum(pin);
+}
+
+/* Zhaochunsheng algorithm
+   This algorithm was first released in the script ComputePIN-C83A35 for Tenda W309R (April 2012)
+   The same algorithm was found on several devices from different manufacturers. 
+   This is a non exhaustive list of affected models:
+         ASUSTek COMPUTER INC.       RT-G32 
+         Belkin                      F5D8235-4v1000, F5D8231-4v5000 and F9K1104v1 
+         Conceptronic                c300brs4a v2_v1.0.0 and C300BRS4A
+         D-Link International        DIR-620  
+         Edimax                      3G-6210n and 3G-6220n 
+         Hitron Technologies. Inc    CDE-30364 
+         HUAWEI                      HG532e, HG532s and HG566a (HG532c uses a slightly modified version of this algorithm)
+         Kuzomi                      K1500 and K1550
+         Samsung                     SMT-G7440 and SWL (Samsung Wireless Link)
+         TELDAT                      iRouter1104-W
+         TENDA                       W309R
+         TP-LINK CO., LTD.           TD-W8951ND and TD-W8961ND v2.1
+         TRENDnet, Inc.              TEW-652BRP (TEW-818DRU and TEW-828DRU use a slightly modified version of this algorithm)   
+         ZyXEL Communications Co.     zyxel NBG-419n and WAP 3205                                           *
+    */
+
+int pingen_zhaochunsheng(char *mac, int add)
+{
+	int pin = 0;
+	/* copy the last 3 bytes of the mac addr, i.e.
+	   input: "C8:3A:35:00:11:22" -> result: "001122" */
+	char last3bytes[6+1];
+	last3bytes[0]=mac[ 9];
+	last3bytes[1]=mac[10];
+
+	last3bytes[2]=mac[12];
+	last3bytes[3]=mac[13];
+
+	last3bytes[4]=mac[15];
+	last3bytes[5]=mac[16];
+
+	last3bytes[6] = 0;
+
+	sscanf(last3bytes, "%x", &pin);
+	pin = pin % 10000000;
+	return (pin * 10) + wps_pin_checksum(pin);
+}
+
+//mac to decimal by kib0rg
+int pingen_zyxel(char *mac, int add)
+{
+    //pingen make by kib0rg, a little change by t6x
+    int pin;
+
+    char mac_address[7] = {0};
+ 
+    sprintf(mac_address, "%c%c%c%c%c%c", mac[6], mac[7], mac[8], mac[9], mac[10], mac[11]);
+
+    pin = (hexToInt(mac_address) + add) % 10000000;
+
+    return (pin * 10) + wps_pin_checksum(pin);
 }
