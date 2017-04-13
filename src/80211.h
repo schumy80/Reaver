@@ -36,12 +36,16 @@
 
 #include "defs.h"
 #include "globule.h"
+#include <libwps.h>
 #include "argsparser.h"
-#include "sql.h"
 #include "builder.h"
 #include "iface.h"
 #include "crc.h"
 #include "wps.h"
+
+#ifdef __APPLE__
+#include "utils/radiotap.h"
+#endif
 
 #define AUTH_OK                 1
 #define ASSOCIATE_OK            2

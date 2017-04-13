@@ -39,7 +39,6 @@
 #include "defs.h"
 #include "misc.h"
 #include "globule.h"
-#include "sql.h"
 #include "config.h"
 
 #ifndef CONF_DIR
@@ -56,6 +55,5 @@
 
 int restore_session();
 int save_session();
-int configuration_directory_exists();
 
 #endif

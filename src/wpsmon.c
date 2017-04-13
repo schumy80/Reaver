@@ -36,6 +36,55 @@
 int o_file_p = 0;
 int get_chipset_output = 0;
 int c_fix = 0;
+int show_all_aps = 0;
+
+static struct mac {
+	unsigned char mac[6];
+	unsigned char probes;
+	unsigned char flags;
+} seen_list[256];
+enum seen_flags {
+	SEEN_FLAG_PRINTED = 1,
+	SEEN_FLAG_COMPLETE = 2,
+};
+static unsigned seen_count;
+static int list_insert(char *bssid) {
+	unsigned i;
+	unsigned char mac[6];
+	str2mac(bssid, mac);
+	if(seen_count >= 256) return -1;
+	for(i=0; i<seen_count; i++)
+		if(!memcmp(seen_list[i].mac, mac, 6)) return i;
+	memcpy(seen_list[seen_count].mac, mac, 6);
+	return seen_count++;
+}
+static int was_printed(char* bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < 256) {
+		unsigned f = seen_list[x].flags;
+		seen_list[x].flags |= SEEN_FLAG_PRINTED;
+		return f & SEEN_FLAG_PRINTED;
+	}
+	return 1;
+}
+static void mark_ap_complete(char *bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < 256) seen_list[x].flags |= SEEN_FLAG_COMPLETE;
+}
+static int is_done(char *bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < 256) return seen_list[x].flags & SEEN_FLAG_COMPLETE;
+	return 1;
+}
+static int should_probe(char *bssid) {
+	int x = list_insert(bssid);
+        if(x >= 0 && x < 256) return seen_list[x].probes < get_max_num_probes();
+	return 0;
+}
+static void update_probe_count(char *bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < 256) seen_list[x].probes++;
+}
 
 int main(int argc, char *argv[])
 {
@@ -45,7 +94,7 @@ int main(int argc, char *argv[])
     int source = INTERFACE, ret_val = EXIT_FAILURE;
     struct bpf_program bpf = { 0 };
     char *out_file = NULL, *last_optarg = NULL, *target = NULL, *bssid = NULL;
-    char *short_options = "i:c:n:o:b:5sfuCDhPg";
+    char *short_options = "i:c:n:o:b:5sfuDhPga";
     struct option long_options[] = {
 		{ "get-chipset", no_argument, NULL, 'g' },
 	{ "output-piped", no_argument, NULL, 'P' },
@@ -56,22 +105,20 @@ int main(int argc, char *argv[])
         { "probes", required_argument, NULL, 'n' },
         { "daemonize", no_argument, NULL, 'D' },
         { "file", no_argument, NULL, 'f' },
-        { "ignore-fcs", no_argument, NULL, 'C' },
         { "5ghz", no_argument, NULL, '5' },
         { "scan", no_argument, NULL, 's' },
         { "survey", no_argument, NULL, 'u' },
+        { "all", no_argument, NULL, 'a' },
         { "help", no_argument, NULL, 'h' },
         { 0, 0, 0, 0 }
     };
-	
+
 
     globule_init();
-    sql_init();
-    create_ap_table();
     set_auto_channel_select(0);
     set_wifi_band(BG_BAND);
     set_debug(INFO);
-    set_validate_fcs(1);
+    set_validate_fcs(0);
     set_log_file(stdout);
     set_max_num_probes(DEFAULT_MAX_NUM_PROBES);
 
@@ -115,11 +162,11 @@ int main(int argc, char *argv[])
             case 'u':
                 mode = SURVEY;
                 break;
-            case 'C':
-                set_validate_fcs(0);
-                break;
             case 'D':
                 daemonize();
+                break;
+            case 'a':
+                show_all_aps = 1;
                 break;
             default:
                 usage(argv[0]);
@@ -137,13 +184,13 @@ int main(int argc, char *argv[])
             last_optarg = strdup(optarg);
         }
     }
-	
+
 	if (o_file_p == 0)
 	{
 		printf("\nWash v%s WiFi Protected Setup Scan Tool\n", PACKAGE_VERSION);
-		printf("Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>\n");
-		printf("mod by t6_x <t6_x@hotmail.com> & DataHead & Soxrok2212\n\n");
-	}	
+		printf("Copyright (c) 2011, Tactical Network Solutions, Craig Heffner\n");
+		printf("mod by t6_x<t6_x@hotmail.com>, DataHead, Soxrok2212, Wiire, AAnarchYY & rofl0r\n\n");
+	}
 
     /* The interface value won't be set if capture files were specified; else, there should have been an interface specified */
     if(!get_iface() && source != PCAP_FILE)
@@ -173,19 +220,19 @@ int main(int argc, char *argv[])
     /* Open the output file, if any. If none, write to stdout. */
     if(out_file)
     {
-	
+
 		fp = fopen(out_file, "wb");
 		if(!fp)
 		{
 			cprintf(CRITICAL, "[X] ERROR: Failed to open '%s' for writing\n", out_file);
 			goto end;
 		}
-		
+
 
         set_log_file(fp);
     }
 
-    /* 
+    /*
      * Loop through all of the specified capture sources. If an interface was specified, this will only loop once and the
      * call to monitor() will block indefinitely. If capture files were specified, this will loop through each file specified
      * on the command line and monitor() will return after each file has been processed.
@@ -241,7 +288,6 @@ int main(int argc, char *argv[])
 
 end:
     globule_deinit();
-    sql_cleanup();
     if(bssid) free(bssid);
     if(out_file) free(out_file);
     if(wpsmon.fp) fclose(wpsmon.fp);
@@ -263,9 +309,9 @@ void monitor(char *bssid, int passive, int source, int channel, int mode)
     /* If we aren't reading from a pcap file, set the interface channel */
     if(source == INTERFACE)
     {
-        /* 
-         * If a channel has been specified, set the interface to that channel. 
-         * Else, set a recurring 1 second timer that will call sigalrm() and switch to 
+        /*
+         * If a channel has been specified, set the interface to that channel.
+         * Else, set a recurring 1 second timer that will call sigalrm() and switch to
          * a new channel.
          */
         if(channel > 0)
@@ -285,17 +331,20 @@ void monitor(char *bssid, int passive, int source, int channel, int mode)
     {
 		if (o_file_p == 0)
 		{
-			cprintf(INFO, "BSSID                  Channel       RSSI       WPS Version       WPS Locked        ESSID\n");
-			cprintf(INFO, "---------------------------------------------------------------------------------------------------------------\n");
+			cprintf  (INFO, "BSSID              Ch  dBm  WPS  Lck  ESSID\n");
+			//cprintf(INFO, "00:11:22:33:44:55  12  -77  1.0  Yes  0123456789abcdef0123456789abcdef\n");
+			cprintf  (INFO, "--------------------------------------------------------------------------------\n");
 			header_printed = 1;
 		}
-		
+
     }
 
     while((packet = next_packet(&header)))
     {
         parse_wps_settings(packet, &header, bssid, passive, mode, source);
+#ifndef __APPLE__
         memset((void *) packet, 0, header.len);
+#endif
     }
 
     return;
@@ -310,7 +359,7 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
     char *bssid = NULL, *ssid = NULL, *lock_display = NULL;
     int wps_parsed = 0, probe_sent = 0, channel = 0, rssi = 0;
     static int channel_changed = 0;
-    
+
     char info_manufac[500];
     char info_modelnum[500];
     char info_modelserial[500];
@@ -324,6 +373,7 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
     }
 
     rt_header = (struct radio_tap_header *) radio_header(packet, header->len);
+
     frame_header = (struct dot11_frame_header *) (packet + rt_header->len);
 
     /* If a specific BSSID was specified, only parse packets from that BSSID */
@@ -352,6 +402,10 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
                 channel_changed = 1;
             }
 
+
+
+
+
             if(frame_header->fc.sub_type == PROBE_RESPONSE ||
                     frame_header->fc.sub_type == SUBTYPE_BEACON)
             {
@@ -360,22 +414,22 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 
             if(!is_done(bssid) && (get_channel() == channel || source == PCAP_FILE))
             {
-                if(frame_header->fc.sub_type == SUBTYPE_BEACON && 
-                        mode == SCAN && 
-                        !passive && 
-                        should_probe(bssid))
+                if(frame_header->fc.sub_type == SUBTYPE_BEACON &&
+                        mode == SCAN &&
+                        !passive &&
+//                        should_probe(bssid))
+                        should_probe(bssid)
+                    #ifdef __APPLE__
+                                       && 0
+                    #endif
+                                       )
                 {
                     send_probe_request(get_bssid(), get_ssid());
                     probe_sent = 1;
                 }
-
-                if(!insert(bssid, ssid, wps, encryption, rssi))
+                if(!was_printed(bssid) && (wps->version > 0 || show_all_aps == 1))
                 {
-                    update(bssid, ssid, wps, encryption);
-                }
-                else if(wps->version > 0)
-                {
-                    switch(wps->locked)
+                    if(wps->version > 0) switch(wps->locked)
                     {
                         case WPSLOCKED:
                             lock_display = YES;
@@ -384,10 +438,10 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
                         case UNSPECIFIED:
                             lock_display = NO;
                             break;
-                    }
-					
+                    } else lock_display = NO;
+
 					//ideas made by kcdtv
-					
+
 					if(get_chipset_output == 1)
 					//if(1)
 					{
@@ -397,44 +451,44 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 							cprintf(INFO,"Option (-g) REQUIRES a channel to be set with (-c)\n");
 							exit(0);
 						}
-						
+
 						FILE *fgchipset=NULL;
 						char cmd_chipset[4000];
 						char cmd_chipset_buf[4000];
 						char buffint[5];
-						
-						char *aux_cmd_chipset=NULL;
-						
 
-						
+						char *aux_cmd_chipset=NULL;
+
+
+
 						memset(cmd_chipset, 0, sizeof(cmd_chipset));
 						memset(cmd_chipset_buf, 0, sizeof(cmd_chipset_buf));
 						memset(info_manufac, 0, sizeof(info_manufac));
                         memset(info_modelnum, 0, sizeof(info_modelnum));
                         memset(info_modelserial, 0, sizeof(info_modelserial));
-						
 
-						
+
+
 						strcat(cmd_chipset,"reaver -0 -s y -vv -i "); //need option to stop reaver in m1 stage
 						strcat(cmd_chipset,get_iface());
-						
+
 						strcat(cmd_chipset, " -b ");
 						strcat(cmd_chipset, mac2str(get_bssid(),':'));
-						
+
 						strcat(cmd_chipset," -c ");
 						snprintf(buffint, sizeof(buffint), "%d",channel);
 						strcat(cmd_chipset, buffint);
-						
+
 						//cprintf(INFO,"\n%s\n",cmd_chipset);
 
 						if ((fgchipset = popen(cmd_chipset, "r")) == NULL) {
 							printf("Error opening pipe!\n");
 							//return -1;
 						}
-						
-						
 
-						while (fgets(cmd_chipset_buf, 4000, fgchipset) != NULL) 
+
+
+						while (fgets(cmd_chipset_buf, 4000, fgchipset) != NULL)
 						{
 							//[P] WPS Manufacturer: xxx
 							//[P] WPS Model Number: yyy
@@ -444,33 +498,33 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 							aux_cmd_chipset = strstr(cmd_chipset_buf,"[P] WPS Manufacturer:");
 							if(aux_cmd_chipset != NULL)
 							{
-								//md_chipset_buf
-								strncpy(info_manufac, aux_cmd_chipset+21, sizeof(cmd_chipset_buf));
-								//cprintf(INFO,"%s\n",info_manufac);
-								
+								//bug fix by alxchk
+								strncpy(info_manufac, aux_cmd_chipset+21, sizeof(info_manufac));
 							}
 
 							aux_cmd_chipset = strstr(cmd_chipset_buf,"[P] WPS Model Number:");
 							if(aux_cmd_chipset != NULL)
 							{
-								strncpy(info_modelnum, aux_cmd_chipset+21, sizeof(cmd_chipset_buf));
-								
+                                //bug fix by alxchk
+								strncpy(info_modelnum, aux_cmd_chipset+21, sizeof(info_modelnum));
+
 							}
 
 							aux_cmd_chipset = strstr(cmd_chipset_buf,"[P] WPS Model Serial Number:");
 							if(aux_cmd_chipset != NULL)
 							{
-								strncpy(info_modelserial, aux_cmd_chipset+28, sizeof(cmd_chipset_buf));
-								
+                                //bug fix by alxchk
+								strncpy(info_modelserial, aux_cmd_chipset+28, sizeof(info_modelserial));
+
 							}
 
 						}
-						
+
 						//cprintf(INFO,"\n%s\n",info_manufac);
 						info_manufac[strcspn ( info_manufac, "\n" )] = '\0';
 						info_modelnum[strcspn ( info_modelnum, "\n" )] = '\0';
 						info_modelserial[strcspn ( info_modelserial, "\n" )] = '\0';
-						
+
 
 
                         if(pclose(fgchipset))  {
@@ -478,27 +532,30 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
                         //return -1;
                         }
 
-					
+
 
 					}
-					
-					
+
+
 					if (o_file_p == 0)
 					{
-						cprintf(INFO, "%17s      %2d            %.2d        %d.%d               %s               %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, ssid);
+						if(wps->version > 0)
+							cprintf(INFO, "%17s  %2d  %.2d  %d.%d  %3s  %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, ssid);
+						else
+							cprintf(INFO, "%17s  %2d  %.2d            %s\n", bssid, channel, rssi, ssid);
 					}
 					else
 					{
 						if(get_chipset_output == 1)
 						{
 							cprintf(INFO, "%17s|%2d|%.2d|%d.%d|%s|%s|%s|%s|%s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, ssid, info_manufac, info_modelnum, info_modelserial);
-							
+
 						}else
 						{
 							cprintf(INFO, "%17s|%2d|%.2d|%d.%d|%s|%s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, ssid);
-							
+
 						}
-						
+
 					}
                 }
 
@@ -507,7 +564,7 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
                     update_probe_count(bssid);
                 }
 
-                /* 
+                /*
                  * If there was no WPS information, then the AP does not support WPS and we should ignore it from here on.
                  * If this was a probe response, then we've gotten all WPS info we can get from this AP and should ignore it from here on.
                  */
@@ -517,12 +574,6 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
                 }
 
             }
-        }
-
-        /* Only update received signal strength if we are on the same channel as the AP, otherwise power measurements are screwy */
-        if(channel == get_channel())
-        {
-            update_ap_power(bssid, rssi);
         }
 
         free(bssid);
@@ -569,16 +620,16 @@ void usage(char *prog)
     fprintf(stderr, "\t-o, --out-file=<file>                Write data to file\n");
     fprintf(stderr, "\t-n, --probes=<num>                   Maximum number of probes to send to each AP in scan mode [%d]\n", DEFAULT_MAX_NUM_PROBES);
     fprintf(stderr, "\t-D, --daemonize                      Daemonize wash\n");
-    fprintf(stderr, "\t-C, --ignore-fcs                     Ignore frame checksum errors\n");
     fprintf(stderr, "\t-5, --5ghz                           Use 5GHz 802.11 channels\n");
     fprintf(stderr, "\t-s, --scan                           Use scan mode\n");
     fprintf(stderr, "\t-u, --survey                         Use survey mode [default]\n");
-    fprintf(stderr, "\t-P, --output-piped              Allows Wash output to be piped. Example. wash x|y|z...\n");
+    fprintf(stderr, "\t-P, --output-piped                   Allows Wash output to be piped. Example. wash x|y|z...\n");
     fprintf(stderr, "\t-g, --get-chipset                    Pipes output and runs reaver alongside to get chipset\n");
+    fprintf(stderr, "\t-a, --all                            Show all APs, even those without WPS\n");
     fprintf(stderr, "\t-h, --help                           Show help\n");
 
     fprintf(stderr, "\nExample:\n");
-    fprintf(stderr, "\t%s -i mon0\n\n", prog);
+    fprintf(stderr, "\t%s -i wlan0mon\n\n", prog);
 
     return;
 }
