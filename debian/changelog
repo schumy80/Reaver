@@ -1,3 +1,9 @@
+reaver (1.5.3+git20170413-0kali1) kali-dev; urgency=medium
+
+  * Import new upstream release
+
+ -- Sophie Brun <sophie@freexian.com>  Thu, 13 Apr 2017 16:09:31 +0200
+
 reaver (1.5.2.1-1kali2) kali-dev; urgency=medium
 
   * Add a debian/watch
