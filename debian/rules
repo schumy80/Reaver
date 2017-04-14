@@ -5,7 +5,7 @@
 export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 %:
-	dh $@ --sourcedirectory=src
+	dh $@ --sourcedirectory=src --no-parallel
 
-override_dh_auto_install:
+#override_dh_auto_install:
 
