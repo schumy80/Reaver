@@ -50,76 +50,76 @@ char *mac2str(unsigned char *mac, char delim)
 /* Converts a colon-delimited string to a raw MAC address */
 void str2mac(char *str, unsigned char *mac)
 {
-    char *delim_ptr = NULL, *num_ptr = NULL, *tmp_str = NULL;
-    char delim = ':';
-    int count = 0;
+	char *delim_ptr = NULL, *num_ptr = NULL, *tmp_str = NULL;
+	char delim = ':';
+	int count = 0;
 
-    tmp_str = strdup(str);
-    delim_ptr = num_ptr = tmp_str;
+	tmp_str = strdup(str);
+	delim_ptr = num_ptr = tmp_str;
 
-    while((delim_ptr = strchr(delim_ptr, delim)) && count < (MAC_ADDR_LEN-1))
-    {
-        memset(delim_ptr, 0, 1);
-        mac[count] = strtol(num_ptr, NULL, 16);
-        delim_ptr++;
-        count++;
-        num_ptr = delim_ptr;
-    }
-    mac[count] = strtol(num_ptr, NULL, 16);
-
-    free(tmp_str);
-    return;
+	while((delim_ptr = strchr(delim_ptr, delim)) && count < (MAC_ADDR_LEN-1))
+	{
+		memset(delim_ptr, 0, 1);
+		mac[count] = strtol(num_ptr, NULL, 16);
+		delim_ptr++;
+		count++;
+		num_ptr = delim_ptr;
+	}
+	mac[count] = strtol(num_ptr, NULL, 16);
+	
+	free(tmp_str);
+	return;
 }
 
 /* Conditional printf wrapper */
 void cprintf(enum debug_level level, const char *fmt, ...)
 {
-    va_list arg;
+	va_list arg;
 
-    if(level <= get_debug())
-    {
-        va_start(arg, fmt);
-        vfprintf(get_log_file(), fmt, arg);
-        va_end(arg);
-    }
+	if(level <= get_debug())
+	{
+		va_start(arg, fmt);
+		vfprintf(get_log_file(), fmt, arg);
+		va_end(arg);
+	}
 
-    fflush(get_log_file());
+	fflush(get_log_file());
 }
 
 /* Daemonizes the process */
 void daemonize(void)
 {
-    if(fork() > 0)
-    {
-        exit(EXIT_SUCCESS);
-    }
+	if(fork() > 0)
+	{
+		exit(EXIT_SUCCESS);
+	}
 
-    if(chdir("/") == 0)
-    {
-        setsid();
-        umask(0);
+	if(chdir("/") == 0)
+	{
+		setsid();
+		umask(0);
 
-        if(fork() > 0)
-        {
-            exit(EXIT_SUCCESS);
-        }
-    }
+		if(fork() > 0)
+		{
+			exit(EXIT_SUCCESS);
+		}
+	}
 }
 
 /* Closes libpcap during sleep period to avoid stale packet data in pcap buffer */
 void pcap_sleep(int seconds)
 {
-    if(seconds > 0)
-    {
-        pcap_close(get_handle());
-        set_handle(NULL);
-        sleep(seconds);
-        set_handle(capture_init(get_iface()));
+	if(seconds > 0)
+	{
+		pcap_close(get_handle());
+		set_handle(NULL);
+		sleep(seconds);
+        	set_handle(capture_init(get_iface()));
 
-        if(!get_handle())
-        {
-            cprintf(CRITICAL, "[-] Failed to re-initialize interface '%s'\n", get_iface());
-        }
-    }
+		if(!get_handle())
+		{
+			cprintf(CRITICAL, "[-] Failed to re-initialize interface '%s'\n", get_iface());
+		}
+	}
 }
 

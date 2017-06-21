@@ -3,16 +3,16 @@
 **Reaver** has been designed to be a robust and practical attack against **Wi-Fi Protected Setup (WPS)** registrar PINs in order to **recover WPA/WPA2 passphrases**. It has been tested against a wide variety of access points and WPS implementations.
 
 The **original** Reaver implements a **online brute force attack** against, as described in [http://sviehb.files.wordpress.com/2011/12/viehboeck_wps.pdf](http://sviehb.files.wordpress.com/2011/12/viehboeck_wps.pdf).
-**reaver-wps-fork-t6x** is a **community forked version**, which has included **various bug fixes** and additional attack method (the **offline Pixie Dust** attack).
+**reaver-wps-fork-t6x** version **1.6b** is a **community forked version**, which has included **various bug fixes** and additional attack method (the **offline Pixie Dust** attack).
 
 **Depending on the target's Access Point (AP)**, to recover the plain text WPA/WPA2 passphrase the **average** amount of time for the transitional **online brute force** method is **between 4-10 hours**. In practice, it will generally take half this time to guess the correct WPS pin and recover the passphrase.
 When using the **offline attack**, **if** the AP is vulnerable, it may take only a matter of **seconds to minutes**.
 
 * The original Reaver (v1.4) can be found here: [https://code.google.com/p/reaver-wps/](https://code.google.com/p/reaver-wps/).
-* The discontinued community edition of Reaver (v1.5) that was used as the starting point: [https://code.google.com/p/reaver-wps-fork/](https://code.google.com/p/reaver-wps-fork/).
-* reaver-wps-fork-t6x community edition of Reaver (which includes the Pixie Dust attack): [https://github.com/t6x/reaver-wps-fork-t6x](https://github.com/t6x/reaver-wps-fork-t6x).
-* For more information about the Pixie Dust attack (including **which APs are vulnerable**) can be found here: 			[https://github.com/wiire/pixiewps](https://github.com/wiire/pixiewps), 
-[https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-(Offline-WPS-Attack)](https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-(Offline-WPS-Attack)) & 									[https://docs.google.com/spreadsheets/d/1tSlbqVQ59kGn8hgmwcPTHUECQ3o9YhXR91A_p7Nnj5Y/edit?usp=sharing](https://docs.google.com/spreadsheets/d/1tSlbqVQ59kGn8hgmwcPTHUECQ3o9YhXR91A_p7Nnj5Y/edit?usp=sharing)
+* The discontinued reaver-wps-fork-t6x community edition (which includes the Pixie Dust attack. v1.5.3) is now the old-master branch from this repository
+* reaver-wps-fork-t6x community edition of Reaver version 1.6b (which includes the Pixie Dust attack): [https://github.com/t6x/reaver-wps-fork-t6x](https://github.com/t6x/reaver-wps-fork-t6x).
+* For more information about the Pixie Dust attack (including **which APs are vulnerable**) can be found here:                  [https://github.com/wiire/pixiewps](https://github.com/wiire/pixiewps), 
+[https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-(Offline-WPS-Attack)](https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-(Offline-WPS-Attack)) &                                                                    [https://docs.google.com/spreadsheets/d/1tSlbqVQ59kGn8hgmwcPTHUECQ3o9YhXR91A_p7Nnj5Y/edit?usp=sharing](https://docs.google.com/spreadsheets/d/1tSlbqVQ59kGn8hgmwcPTHUECQ3o9YhXR91A_p7Nnj5Y/edit?usp=sharing)
 
 - - -
 
@@ -53,132 +53,48 @@ make
 
 - - -
 
-# Reaver Usage
+# About Reaver 1.6b Options 
 
-```
-Reaver v1.5.3 WiFi Protected Setup Attack Tool
-Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>
-mod by t6_x <t6_x@hotmail.com> & DataHead & Soxrok2212 & Wiire & AAnarchYY & KokoSoft
+ Please notice that work is in progress and the situation will progress soon, stay tuned! ;)
 
-Required Arguments:
-	-i, --interface=<wlan>          Name of the monitor-mode interface to use
-	-b, --bssid=<mac>               BSSID of the target AP
+## -K and-or -Z  // --pixie-dust (in reaver)
 
-Optional Arguments:
-	-m, --mac=<mac>                 MAC of the host system
-	-e, --essid=<ssid>              ESSID of the target AP
-	-c, --channel=<channel>         Set the 802.11 channel for the interface (implies -f)
-	-o, --out-file=<file>           Send output to a log file [stdout]
-	-s, --session=<file>            Restore a previous session file
-	-C, --exec=<command>            Execute the supplied command upon successful pin recovery
-	-D, --daemonize                 Daemonize reaver
-	-a, --auto                      Auto detect the best advanced options for the target AP
-	-f, --fixed                     Disable channel hopping
-	-5, --5ghz                      Use 5GHz 802.11 channels
-	-v, --verbose                   Display non-critical warnings (-vv for more)
-	-q, --quiet                     Only display critical messages
-	-K  --pixie-dust=<number>       [1] Run pixiewps with PKE, PKR, E-Hash1, E-Hash2 and E-Nonce (Ralink, Broadcom & Realtek)
-	-Z, --no-auto-pass              Do NOT run reaver to auto retrieve WPA password if Pixiewps attack is successful
-	-h, --help                      Show help
-
-Advanced Options:
-	-p, --pin=<wps pin>             Use the specified 4 or 8 digit WPS pin
-	-d, --delay=<seconds>           Set the delay between pin attempts [1]
-	-l, --lock-delay=<seconds>      Set the time to wait if the AP locks WPS pin attempts [60]
-	-F, --fake-delay=<seconds>      Set the time to sleep after received fake NACK [0]
-	-R, --fake-reason=<nack reason> Specifies the reason code for NACK used in the FAKE NACK
-	-I, --ignore-reason             Ignore change of reason code for NACK
-	-g, --max-attempts=<num>        Quit after num pin attempts
-	-x, --fail-wait=<seconds>       Set the time to sleep after 10 unexpected failures [0]
-	-r, --recurring-delay=<x:y>     Sleep for y seconds every x pin attempts
-	-t, --timeout=<seconds>         Set the receive timeout period [5]
-	-T, --m57-timeout=<seconds>     Set the M5/M7 timeout period [0.20]
-	-A, --no-associate              Do not associate with the AP (association must be done by another application)
-	-N, --no-nacks                  Do not send NACK messages when out of order packets are received
-	-S, --dh-small                  Use small DH keys to improve crack speed
-	-L, --ignore-locks              Ignore locked state reported by the target AP
-	-E, --eap-terminate             Terminate each WPS session with an EAP FAIL packet
-	-n, --nack                      Target AP always sends a NACK [Auto]
-	-w, --win7                      Mimic a Windows 7 registrar [False]
-	-X, --exhaustive                Set exhaustive mode from the beginning of the session [False]
-	-1, --p1-index                  Set initial array index for the first half of the pin [False]
-	-2, --p2-index                  Set initial array index for the second half of the pin [False]
-	-P, --pixiedust-loop            Set into PixieLoop mode (doesn't send M4, and loops through to M3) [False]
-	-W, --generate-pin              Default Pin Generator [1] Belkin [2] D-Link [3] Zyxel
-	-H, --pixiedust-log             Enables logging of sequence completed PixieHashes
-
-Example:
-	reaver -i wlan0mon -b 00:90:4C:C1:AC:21 -vvv -K 1
-```
-
-## -K // --pixie-dust
-
-The `-K 1` option performs the offline attack, Pixie Dust _(`pixiewps`)_, by automatically passing the **PKE**, **PKR**, **E-Hash1**, **E-Hash2**, **E-Nonce** and **Authkey** variables. `pixiewps` will then try to attack **Ralink**, **Broadcom** and **Realtek** detected chipset.
+The `-K` and `-Z` option perform the offline attack, Pixie Dust _(`pixiewps`)_, by automatically passing the **PKE**, **PKR**, **E-Hash1**, **E-Hash2**, **E-Nonce** and **Authkey** variables. `pixiewps` will then try to attack **Ralink**, **Broadcom** and **Realtek** detected chipset.
 **Special note**: If you are attacking a **Realtek AP**, **do NOT** use small DH Keys (`-S`) option.
+User will have to execute reaver with the cracked PIN (option -p) to get the WPA pass-phrase. 
+This is a temporary solution and an option to do a full attack will be implemented soon
 
-## -H // --pixiedust-log
 
-The `-H` option is a switch to enable logging of PixieHashes, **saved hashes** will be saved in the **executing directory**.
-This option requires you to have at the least `-vvv` switch on and will work with `-K 1` & `-P` appropriately.
-
-The files saved are named after the bssid (MAC) of the target, and with an extention of `.pixie`.
-On the inside of these saved logs, you will find all the required **PixieDust hashes**, along with a **quick copy & paste ready full command** to use it on `pixiewps`. You also have the option to execute it. Just pop in the file into your favorite shell, and execute it _(`chmod +x <filename>` may be required)_.
-
-## -P // --pixiedust-loop
-
-When using the `-P` option, Reaver goes into a loop mode that breaks the WPS protocol by not using M4 message to **hopefully avoid lockouts**.
-This is to **ONLY** be used for PixieHash collecting to use with `pixiewps`, **NOT** to brute force 'online' pins.
-
-This option was made with intent of:
-
-* Collecting repetitive hashes for further comparison and or analysis / **discovery of new vulnerable chipsets**, routers etc..
-* **Time sensitive attacks** where the hash collecting continues repetitively until your time frame is met.
-* For **scripting purposes** of whom want to use a possible lockout preventable way of PixieHash gathering for your use case.
-
-- - -
-
-# Wash Usage
-
-```
-Wash v1.5.3 WiFi Protected Setup Scan Tool
-Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>
-mod by t6_x<t6_x@hotmail.com>, DataHead, Soxrok2212, Wiire, AAnarchYY & rofl0r
-
-Required Arguments:
-	-i, --interface=<iface>              Interface to capture packets on
-	-f, --file [FILE1 FILE2 FILE3 ...]   Read packets from capture files
-
-Optional Arguments:
-	-c, --channel=<num>                  Channel to listen on [auto]
-	-o, --out-file=<file>                Write data to file
-	-n, --probes=<num>                   Maximum number of probes to send to each AP in scan mode [15]
-	-D, --daemonize                      Daemonize wash
-	-5, --5ghz                           Use 5GHz 802.11 channels
-	-s, --scan                           Use scan mode
-	-u, --survey                         Use survey mode [default]
-	-P, --output-piped                   Allows Wash output to be piped. Example. wash x|y|z...
-	-g, --get-chipset                    Pipes output and runs reaver alongside to get chipset
-	-a, --all                            Show all APs, even those without WPS
-	-h, --help                           Show help
-
-Example:
-	wash -i wlan0mon
-```
-
-## -g // --get-chipset
-
-The option `-g` of Wash automatically runs Reaver to receive the chipset data.
-**If** the AP does not respond to them quickly, this option will be **slow to display the data**, because Reaver will stay running until it receives the data or until you reach your timeout limit (30 seconds).
-
-## -a // --all
+## -a // --all  (in wash) 
 
 The option `-a` of Wash will list all access points, including those without WPS enabled.
-- - -
+
+## Deprecated and temporary left behind options
+
+**- n** (reaver): Automatically enabled, no need to invocate it. 
+**- W** (reaver): Temporary left behind. Integration of the default PIN generators was unstable, leading to many warnings at compilation time. It was also an issue to use a PIN attempt (risk of AP rating limit) in order to get a BSSID and an ESSID. For the moment PIN generation has to be done externally using the scripts provided in "doc"
+- a (reaver): This option was the only option which required sqlite3 adding an extra dependency. It was only designed for automation scripts and this task (execute the last reaver command again) can be easily done internally by the script that calls reaver
+- p1 and -p2 (reaver): Too much warnings and bugs.
+- H (reaver): There is a need to find a way to perform it more cleanly, work is in progress
+- vvv (reaver): The highest level of verbose is temporary removed for the same reason. 
+- g (wash): Option was broken in latest release and need to be seriously rethought. 
+
+## Options repaired/solved issues
+  
+  Issues with -g and -p (and their crossed usage) are left behind.
+Code is much more clean, robust and has less dependencies. 
+  We know that it looks like at first time as a regression but it is not!
+We were stuck with issues for years due the dificulty of the task and the lack of global direction.
+Now we have a much healthier base and it will be worth it. 
 
 # Acknowledgements
 
 ## Contribution
 
+Main developer since version 1.6b 
+`rofl0r`
+
+Credits for previous reaver community versions:
 Modifications made by:
 `t6_x`, `DataHead`, `Soxrok2212`, `Wiire`, `AAnarchYY`, `kib0rg`, `KokoSoft`, `rofl0r`, `horrorho` 
 
@@ -193,3 +109,4 @@ Bug fixes made by:
 * `Soxrok2212` for all work done to help in the development of tools
 * `Wiire` for developing Pixiewps
 * `Craig Heffner` for creating Reaver and for the creation of default pin generators (D-Link, Belkin) - http://www.devttys0.com/
+* `Dominique Bongard` for discovering the Pixie Dust attack.

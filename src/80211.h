@@ -43,10 +43,6 @@
 #include "crc.h"
 #include "wps.h"
 
-#ifdef __APPLE__
-#include "utils/radiotap.h"
-#endif
-
 #define AUTH_OK                 1
 #define ASSOCIATE_OK            2
 

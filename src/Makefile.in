@@ -1,9 +1,17 @@
 CC=@CC@
+LIBWPS_DIR=libwps
 INC=-Ilibwps -I.
 prefix=@prefix@
 exec_prefix=@exec_prefix@
 CONFDIR=@sysconfdir@/@target@
-CFLAGS=-DCONF_DIR='"$(CONFDIR)"' @CFLAGS@ -Wno-unused-function
+
+DISABLED_WARNINGS= \
+ -Wno-unused-variable \
+ -Wno-unused-but-set-variable \
+ -Wno-unused-function \
+ -Wno-pointer-sign
+
+CFLAGS=-DCONF_DIR='"$(CONFDIR)"' @CFLAGS@ $(DISABLED_WARNINGS)
 
 WPS_OBJS=wps/wps_attr_build.o wps/wps_attr_parse.o wps/wps_attr_process.o \
 wps/wps.o wps/wps_common.o wps/wps_dev_attr.o wps/wps_enrollee.o \
@@ -14,20 +22,15 @@ LIB_OBJS=libwps/libwps.o $(WPS_OBJS) utils/libutils.a \
 	crypto/libcrypto.a tls/libtls.a
 
 LDFLAGS=@LDFLAGS@
-UNAME := $(shell uname)
 
-ifeq ($(UNAME), Darwin)
-  LIBIWNAME=
-else
-  LIB_OBJS+=lwe/libiw.a
-  LIBIWNAME=libiw
-endif
+LIB_OBJS+=lwe/libiw.a
+LIBIWNAME=libiw
 
 WASH_OBJS=globule.o init.o misc.o 80211.o iface.o \
- builder.o crc.o
+ builder.o crc.o pixie.o
 REAVER_OBJS=argsparser.o globule.o init.o sigint.o iface.o sigalrm.o \
  misc.o cracker.o session.o send.o pins.o 80211.o exchange.o builder.o \
- keys.o crc.o
+ keys.o crc.o pixie.o
 
 all: wash reaver
 
@@ -40,16 +43,16 @@ reaver: $(LIBIWNAME) $(REAVER_OBJS) $(LIB_OBJS)
 	$(CC) $(CFLAGS) $(INC) wpscrack.c $(REAVER_OBJS) $(LIB_OBJS) $(LDFLAGS) -o reaver
 
 utils/libutils.a:
-	(cd utils && $(MAKE))
+	(cd utils && make)
 
 crypto/libcrypto.a: tls/libtls.a
-	(cd crypto && $(MAKE))
+	(cd crypto && make)
 
 tls/libtls.a:
-	(cd tls && $(MAKE))
+	(cd tls && make)
 
 libiw:
-	(cd lwe && $(MAKE) BUILD_STATIC=y libiw.a)
+	(cd lwe && make BUILD_STATIC=y libiw.a)
 
 init.o:
 	$(CC) $(CFLAGS) init.c -c
@@ -99,21 +102,25 @@ cracker.o: globule.o init.o pins.o iface.o exchange.o session.o 80211.o
 globule.o:
 	$(CC) $(CFLAGS) globule.c -c 
 
-install: all
-	install -d $(DESTDIR)$(CONFDIR)
-	install -Dm 755 wash $(DESTDIR)@bindir@/wash
-	install -Dm 755 reaver $(DESTDIR)@bindir@/reaver
+install: wash reaver
+	install -D -m 755 wash $(DESTDIR)$(exec_prefix)/bin/wash
+	install -D -m 755 reaver $(DESTDIR)$(exec_prefix)/bin/reaver
 
 clean:
 	rm -f *~ *.o reaver wash
 	rm -rf *.cache config.status config.log
 	rm -f $(LIB_OBJS)
-	(cd utils && $(MAKE) clean)
-	(cd tls && $(MAKE) clean)
-	(cd crypto && $(MAKE) clean)
-	(cd lwe && $(MAKE) realclean)
+	(cd utils && make clean)
+	(cd tls && make clean)
+	(cd crypto && make clean)
+	(cd lwe && make realclean)
 	rm -f Makefile config.h
 
-distclean: clean
+cleanbin: 
+	rm -f @bindir@/reaver @bindir@/wash @bindir@/walsh
 
-.PHONY: libiw clean distclean install
+distclean: cleanbin clean
+	rm -rf $(CONFDIR)
+
+.PHONY: libiw clean cleanbin distclean install
+
