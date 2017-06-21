@@ -1,7 +1,6 @@
 /*
  * Reaver - Global variable access functions
  * Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>
- * Copyright (c) 2016, Koko Software, Adrian Warecki <bok@kokosoftware.pl>
  *
  *  This program is free software; you can redistribute it and/or modify
  *  it under the terms of the GNU General Public License as published by
@@ -39,127 +38,105 @@
 
 struct globals
 {
-    int pixie_loop;                 /* Loops through up to M4 */
-    int pixie_log;                 /* Logs PixieDust hashes to executing directory */
-    int last_wps_state;             /* Holds the previous WPS state as stored in wps->state */
+        int last_wps_state;             /* Holds the previous WPS state as stored in wps->state */
 
-    int p1_index;                   /* Index into p1 array for building WPS pins */
+        int p1_index;                   /* Index into p1 array for building WPS pins */
 
-    int p2_index;                   /* Index into p2 array for building WPS pins */
+        int p2_index;                   /* Index into p2 array for building WPS pins */
 
-    char *p1[P1_SIZE];              /* Array of all possible values for the firt half of the pin */
+        char *p1[P1_SIZE];              /* Array of all possible values for the firt half of the pin */
 
-    char *p2[P2_SIZE];              /* Array of all possible values for the second half of the pin */
+        char *p2[P2_SIZE];              /* Array of all possible values for the second half of the pin */
 
-    char *static_p1;		/* Static P1, as supplied by the user */
-
-    char *static_p2;		/* Static P2, as supplied by the user */
-
-    enum key_state key_status;      /* Indicates the status of the key cracking: KEY1_WIP | KEY2_WIP | KEY_DONE */
-
-    int dh_small;			/* Use small DH keys to improve WPS speed */
-
-    int external_association;	/* Use an external application to perform AP association  */
-
-    int oo_send_nack;		/* Set to 1 to send WSC_NACK when an out of order packet is received */
-
-    int win7_compat;		/* Set to 1 to make WPS messages mimic Windows 7 settings. */
-
-    int exhaustive;		/* Set to 1 to use exhaustive pin generation instead of checksum the last digit, and restart if pin wasn't found.
-						 * Automatically set to 2, when checksum mode was not successful. */
-
-    int delay;                      /* Seconds to sleep in between key attempts */
-
-    int fail_delay;                 /* Seconds to sleep after WARN_FAILURE_COUNT WPS exchange failures */
-
-    int recurring_delay;            /* Sleep recurring_delay seconds for every recurring_delay_count attempts */
-
-    int lock_delay;			/* Sleep lock_delay seconds when wpscrack detects that the AP has locked WPS pin attempts */
-
-    int ignore_locks;		/* Ignore locked state */
-
-    int fake_nack_delay;        /* Seconds to sleep after received fake NACK. */
-
-    int recurring_delay_count;	/* Enter a recurring delay after recurring_delay_count pin attempts */
-
-    int eap_terminate;              /* Experimental */
-
-    int max_pin_attempts;           /* Maximum number of pin attempts */
-
-    int quit_pin_attempts;          /* Number of pin attempts to quit */
-
-    int rx_timeout;                 /* Receive timeout period (seconds) */
-
-    int timeout_is_nack;            /* Treat M5/M7 receive timeouts as NACKs (only needed for shoddy WPS implementations) */
-
-    int m57_timeout;                /* Timeout period for receiving an M5/M7 response (uSeconds) */
-
-    int out_of_time;                /* Set to 1 when sigalrm sounds */
-
-    enum debug_level debug;         /* Current debug level: INFO | CRITICAL | WARNING | VERBOSE */
-
-    int eapol_start_count;          /* Tracks how many times in a row we've attempted to start and EAP session */
-
-    int fixed_channel;              /* Disables channel hopping if set */
-
-    int auto_channel_select;	/* Diables automatic parsing and changing of the current channel number, as specified in the AP's beacon packet */
-
-    int wifi_band;			/* Determines if we use the A/N bands or B/G bands */
-
-    int channel;			/* Holds the current channel number */
-
-    int max_num_probes;		/* Maximum number of probe requests to send to an AP during survey mode */
-
-    int validate_fcs;		/* If 1, validate each packet's FCS. If 0, process packets even with invalid FCS. */
-
-    enum wsc_op_code opcode;        /* WFA opcode, received by exchange.c and used by builder.c */
-
-    uint8_t eap_id;                 /* Tracks the EAP ID value for building EAP repsonse headers */
-
-    uint16_t ap_capability;         /* Capability information of the target AP as specified in the AP's beacon packets */
-
-    unsigned char bssid[MAC_ADDR_LEN];      /* Target BSSID */
-
-    unsigned char mac[MAC_ADDR_LEN];                /* Source MAC address */
-
-    unsigned char *ap_rates;	/* Supported rates IE data, as reported by the AP */
-
-    int ap_rates_len;		/* Length of the supported rates IE data */
-
-    FILE *fp;			/* Handle to log file */
-
-    char *session;			/* Path to session file */
-
-    char *ssid;                     /* Target SSID */
-
-    char *iface;                    /* Interface name */
-
-    char *pin;                      /* Pointer to the recovered WPS pin value */
-
-    char *exec_string;		/* Pointer to user-supplied command to execute upon success */
-
-    uint16_t nack_reason;           /* Stores the nack code for the last received WSC_NACK message */
-    int last_nack_reason;           /* Stores the nack code for the previously received WSC_NACK message */
-    int fake_nack_reason;           /* The nack code used in FAKE NACK message */
-    int ignore_nack_reason;        /* Ignore the nack code for received WSC_NACK message */
-
-    pcap_t *handle;                 /* Pcap handle */
-
-    struct wps_data *wps;           /* 
-                                     * wpa_supplicant's wps_data structure, needed for almost all wpa_supplicant
-                                     * function calls.
-                                     */
-									 
-    int op_pixie;					/* make pixiewps */	
-    char cmd_reaver_test[4000];		/* auto reaver with pin */
-    int op_autopass;				/* auto reaver with pin */
-	int stop_in_m1;					/* stop reaver in m1 message */
-	int op_gen_pin;					/* gen default pin */
+	char *static_p1;		/* Static P1, as supplied by the user */
 	
+	char *static_p2;		/* Static P2, as supplied by the user */
 
+        enum key_state key_status;      /* Indicates the status of the key cracking: KEY1_WIP | KEY2_WIP | KEY_DONE */
+
+	int dh_small;			/* Use small DH keys to improve WPS speed */
+
+	int external_association;	/* Use an external application to perform AP association  */
+
+	int oo_send_nack;		/* Set to 1 to send WSC_NACK when an out of order packet is received */
+
+	int win7_compat;		/* Set to 1 to make WPS messages mimic Windows 7 settings. */
+
+        int delay;                      /* Seconds to sleep in between key attempts */
+
+        int fail_delay;                 /* Seconds to sleep after WARN_FAILURE_COUNT WPS exchange failures */
+
+        int recurring_delay;            /* Sleep recurring_delay seconds for every recurring_delay_count attempts */
+
+	int lock_delay;			/* Sleep lock_delay seconds when wpscrack detects that the AP has locked WPS pin attempts */
+
+	int ignore_locks;		/* Ignore locked state */
+
+        int recurring_delay_count;	/* Enter a recurring delay after recurring_delay_count pin attempts */
+
+        int eap_terminate;              /* Experimental */
+
+        int max_pin_attempts;           /* Maximum number of pin attempts */
+
+        int rx_timeout;                 /* Receive timeout period (seconds) */
+
+        int timeout_is_nack;            /* Treat M5/M7 receive timeouts as NACKs (only needed for shoddy WPS implementations) */
+
+        int m57_timeout;                /* Timeout period for receiving an M5/M7 response (uSeconds) */
+
+        int out_of_time;                /* Set to 1 when sigalrm sounds */
+
+        enum debug_level debug;         /* Current debug level: INFO | CRITICAL | WARNING | VERBOSE */
+
+        int eapol_start_count;          /* Tracks how many times in a row we've attempted to start and EAP session */
+
+        int fixed_channel;              /* Disables channel hopping if set */
+
+	int auto_channel_select;	/* Diables automatic parsing and changing of the current channel number, as specified in the AP's beacon packet */
+
+	int wifi_band;			/* Determines if we use the A/N bands or B/G bands */
+
+	int channel;			/* Holds the current channel number */
+
+	int max_num_probes;		/* Maximum number of probe requests to send to an AP during survey mode */
+	
+	int validate_fcs;		/* If 1, validate each packet's FCS. If 0, process packets even with invalid FCS. */
+
+        enum wsc_op_code opcode;        /* WFA opcode, received by exchange.c and used by builder.c */
+
+        uint8_t eap_id;                 /* Tracks the EAP ID value for building EAP repsonse headers */
+
+        uint16_t ap_capability;         /* Capability information of the target AP as specified in the AP's beacon packets */
+
+        unsigned char bssid[MAC_ADDR_LEN];      /* Target BSSID */
+
+        unsigned char mac[MAC_ADDR_LEN];                /* Source MAC address */
+
+	unsigned char *ap_rates;	/* Supported rates IE data, as reported by the AP */
+
+	int ap_rates_len;		/* Length of the supported rates IE data */
+
+	FILE *fp;			/* Handle to log file */
+
+	char *session;			/* Path to session file */
+
+        char *ssid;                     /* Target SSID */
+
+        char *iface;                    /* Interface name */
+
+        char *pin;                      /* Pointer to the recovered WPS pin value */
+
+	char *exec_string;		/* Pointer to user-supplied command to execute upon success */
+
+        enum nack_code nack_reason;     /* Stores the nack code for the last received WSC_NACK message */
+
+        pcap_t *handle;                 /* Pcap handle */
+
+        struct wps_data *wps;           /* 
+					 * wpa_supplicant's wps_data structure, needed for almost all wpa_supplicant
+                                         * function calls.
+                                         */
 } *globule;
-
-
 
 int globule_init();
 void globule_deinit();
@@ -193,8 +170,6 @@ void set_lock_delay(int value);
 int get_lock_delay();
 void set_ignore_locks(int value);
 int get_ignore_locks();
-void set_fake_nack_delay(int delay);
-int get_fake_nack_delay();
 void set_eap_terminate(int value);
 int get_eap_terminate();
 void set_max_pin_attempts(int value);
@@ -243,20 +218,12 @@ void set_static_p2(char *value);
 char *get_static_p2(void);
 void set_win7_compat(int value);
 int get_win7_compat(void);
-void set_exhaustive(int value);
-int get_exhaustive(void);
 void set_dh_small(int value);
 int get_dh_small(void);
 void set_external_association(int value);
 int get_external_association(void);
-void set_nack_reason(uint16_t value);
-uint16_t get_nack_reason();
-void set_last_nack_reason(int value);
-int get_last_nack_reason();
-void set_fake_nack_reason(int value);
-int get_fake_nack_reason();
-void set_ignore_nack_reason(int value);
-int get_ignore_nack_reason();
+void set_nack_reason(enum nack_code value);
+enum nack_code get_nack_reason();
 void set_handle(pcap_t *value);
 pcap_t *get_handle();
 void set_wps(struct wps_data *value);
@@ -267,17 +234,5 @@ void set_exec_string(char *string);
 char *get_exec_string(void);
 void set_oo_send_nack(int value);
 int get_oo_send_nack(void);
-int get_quit_pin_attempts();
-void set_op_pixie(int index);
-void set_op_autopass(int index);
-void set_op_gen_pin(int index);
-void set_cmd_reaver_test(char *string);
-void set_pixie_loop(int value);
-int get_pixie_loop();
-void set_pixie_log(int value);
-int get_pixie_log();
-void set_stop_in_m1(int index);
-void set_quit_pin_attempts(int value);
-
 
 #endif
