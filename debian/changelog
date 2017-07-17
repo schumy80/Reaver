@@ -1,3 +1,9 @@
+reaver (1.6.1+git20170715-0kali1) kali-dev; urgency=medium
+
+  * Import snapshot from git
+
+ -- Sophie Brun <sophie@freexian.com>  Mon, 17 Jul 2017 14:55:36 +0200
+
 reaver (1.6.1-0kali1) kali-dev; urgency=medium
 
   * Import new upstream release
