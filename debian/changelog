@@ -1,3 +1,9 @@
+reaver (1.6.3-0kali1) kali-dev; urgency=medium
+
+  * Import new upstream release
+
+ -- Sophie Brun <sophie@freexian.com>  Mon, 06 Nov 2017 12:13:43 +0100
+
 reaver (1.6.2-0kali1) kali-dev; urgency=medium
 
   * Import new usptream release
