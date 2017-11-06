@@ -2253,8 +2253,12 @@ static enum wps_process_res wps_process_m5(struct wps_data *wps,
 	if (wps->state != RECV_M5) {
 		wpa_printf(MSG_DEBUG, "WPS: Unexpected state (%d) for "
 			   "receiving M5", wps->state);
+#if 0
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#else
+		wps->state = RECV_M5;
+#endif
 	}
 
 	if (wps->pbc && wps->wps->registrar->force_pbc_overlap) {
@@ -2267,8 +2271,10 @@ static enum wps_process_res wps_process_m5(struct wps_data *wps,
 
 	if (wps_process_registrar_nonce(wps, attr->registrar_nonce) ||
 	    wps_process_authenticator(wps, attr->authenticator, msg)) {
+#if 0
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#endif
 	}
 
 	decrypted = wps_decrypt_encr_settings(wps, attr->encr_settings,
@@ -2384,8 +2390,12 @@ static enum wps_process_res wps_process_m7(struct wps_data *wps,
 	if (wps->state != RECV_M7) {
 		wpa_printf(MSG_DEBUG, "WPS: Unexpected state (%d) for "
 			   "receiving M7", wps->state);
+#if 0
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#else
+		wps->state = RECV_M7;
+#endif
 	}
 
 	if (wps->pbc && wps->wps->registrar->force_pbc_overlap) {
@@ -2398,8 +2408,10 @@ static enum wps_process_res wps_process_m7(struct wps_data *wps,
 
 	if (wps_process_registrar_nonce(wps, attr->registrar_nonce) ||
 	    wps_process_authenticator(wps, attr->authenticator, msg)) {
+#if 0
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#endif
 	}
 
 	decrypted = wps_decrypt_encr_settings(wps, attr->encr_settings,
@@ -2415,16 +2427,17 @@ static enum wps_process_res wps_process_m7(struct wps_data *wps,
 		   "attribute");
 
 	/* @@@ One of these fails, but we don't really care. We just want the ap settings */
-	/*
 	if (wps_parse_msg(decrypted, &eattr) < 0 ||
 	    wps_process_key_wrap_auth(wps, decrypted, eattr.key_wrap_auth) ||
 	    wps_process_e_snonce2(wps, eattr.e_snonce2) ||
 	    wps_process_ap_settings_r(wps, &eattr)) {
+
+#if 0
 		wpabuf_free(decrypted);
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#endif
 	}
-	*/
 
 	if(wps_parse_msg(decrypted, &eattr) >= 0)
 	{
