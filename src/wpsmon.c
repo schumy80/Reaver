@@ -33,12 +33,15 @@
 
 #include "wpsmon.h"
 #include "utils/file.h"
+#include "utils/vendor.h"
+#include "send.h"
 
 int show_all_aps = 0;
 int json_mode = 0;
 
 static struct mac {
 	unsigned char mac[6];
+	unsigned char vendor_oui[1+3];
 	unsigned char probes;
 	unsigned char flags;
 } seen_list[256];
@@ -84,7 +87,16 @@ static void update_probe_count(char *bssid) {
 	int x = list_insert(bssid);
 	if(x >= 0 && x < 256) seen_list[x].probes++;
 }
-
+static void set_ap_vendor(char *bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < 256) memcpy(seen_list[x].vendor_oui, globule->vendor_oui, sizeof(seen_list[x].vendor_oui));
+}
+static unsigned char *get_ap_vendor(char* bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < 256 && seen_list[x].vendor_oui[0])
+		return seen_list[x].vendor_oui+1;
+	return 0;
+}
 int main(int argc, char *argv[])
 {
 	int c = 0;
@@ -309,15 +321,18 @@ void monitor(char *bssid, int passive, int source, int channel, int mode)
         		act.sa_handler = sigalrm_handler;
         		sigaction (SIGALRM, &act, 0);
 			ualarm(CHANNEL_INTERVAL, CHANNEL_INTERVAL);
-			change_channel(1);
+			int startchan = 1;
+			if(get_wifi_band() == AN_BAND)
+				startchan = 34;
+			change_channel(startchan);
 		}
 	}
 
 	if(!header_printed)
 	{
 		if(!json_mode) {
-			cprintf  (INFO, "BSSID              Ch  dBm  WPS  Lck  ESSID\n");
-			//cprintf(INFO, "00:11:22:33:44:55  12  -77  1.0  Yes  0123456789abcdef0123456789abcdef\n");
+			cprintf  (INFO, "BSSID               Ch  dBm  WPS  Lck  Vendor    ESSID\n");
+			//cprintf(INFO, "00:11:22:33:44:55  104  -77  1.0  Yes  Bloatcom  0123456789abcdef0123456789abcdef\n");
 			cprintf  (INFO, "--------------------------------------------------------------------------------\n");
 		}
 		header_printed = 1;
@@ -370,6 +385,11 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 		   (target != NULL && strcmp(bssid, target) == 0))
 		{
 			channel = parse_beacon_tags(packet, header->len);
+			if(channel == 0) {
+				// It seems 5 GHz APs do not set channel tags.
+				// FIXME: get channel by parsing radiotap header
+				channel = get_channel();
+			}
 			rssi = signal_strength(packet, header->len);
 			ssid = (char *) get_ssid();
 
@@ -382,15 +402,16 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 
 			unsigned fsub_type = frame_header->fc & __cpu_to_le16(IEEE80211_FCTL_STYPE);
 
-			if(fsub_type == __cpu_to_le16(IEEE80211_STYPE_PROBE_RESP) ||
-			   fsub_type == __cpu_to_le16(IEEE80211_STYPE_BEACON))
-			{
+			int is_beacon = fsub_type == __cpu_to_le16(IEEE80211_STYPE_BEACON);
+			int is_probe_resp = fsub_type == __cpu_to_le16(IEEE80211_STYPE_PROBE_RESP);
+
+			if(is_probe_resp || is_beacon) {
 				wps_parsed = parse_wps_parameters(packet, header->len, wps);
+				if(is_beacon || !get_ap_vendor(bssid)) set_ap_vendor(bssid);
 			}
-	
 			if(!is_done(bssid) && (get_channel() == channel || source == PCAP_FILE))
 			{
-				if(fsub_type == __cpu_to_le16(IEEE80211_STYPE_BEACON) && 
+				if(is_beacon && 
 				   mode == SCAN && 
 				   !passive && 
 				   should_probe(bssid))
@@ -412,10 +433,11 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 							break;
 					} else lock_display = NO;
 
+					char* vendor = get_vendor_string(get_ap_vendor(bssid));
 					if(wps->version > 0)
-						cprintf(INFO, "%17s  %2d  %.2d  %d.%d  %3s  %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, ssid);
+						cprintf(INFO, "%17s  %3d  %.2d  %d.%d  %3s  %8s  %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, vendor ? vendor : "        ", ssid);
 					else
-						cprintf(INFO, "%17s  %2d  %.2d            %s\n", bssid, channel, rssi, ssid);
+						cprintf(INFO, "%17s  %3d  %.2d            %8s  %s\n", bssid, channel, rssi, vendor ? vendor : "        ", ssid);
 				}
 
 				if(probe_sent)
@@ -427,12 +449,13 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 				 * If there was no WPS information, then the AP does not support WPS and we should ignore it from here on.
 				 * If this was a probe response, then we've gotten all WPS info we can get from this AP and should ignore it from here on.
 				 */
-				if(!wps_parsed || fsub_type == __cpu_to_le16(IEEE80211_STYPE_PROBE_RESP))
+				if(!wps_parsed || is_probe_resp)
 				{
 					mark_ap_complete(bssid);
 					if(json_mode && (show_all_aps || wps->version > 0)) {
-						char *json_string = wps_data_to_json(bssid, ssid, channel, rssi, wps);
-						printf("%s\n", json_string);
+						char *json_string = wps_data_to_json(bssid, ssid, channel, rssi, get_ap_vendor(bssid), wps);
+						fprintf(get_log_file(), "%s\n", json_string);
+						fflush(get_log_file());
 						free(json_string);
 					}
 				}
@@ -460,7 +483,7 @@ void send_probe_request(unsigned char *bssid, char *essid)
 	probe = build_wps_probe_request(bssid, essid, &probe_size);
 	if(probe)
 	{
-		pcap_inject(get_handle(), probe, probe_size);
+		send_packet(probe, probe_size, 0);
 		free((void *) probe);
 	}
 
@@ -492,7 +515,7 @@ void usage(char *prog)
 	fprintf(stderr, "\t-h, --help                           Show help\n");
 	
 	fprintf(stderr, "\nExample:\n");
-	fprintf(stderr, "\t%s -i mon0\n\n", prog);
+	fprintf(stderr, "\t%s -i wlan0mon\n\n", prog);
 
 	return;
 }

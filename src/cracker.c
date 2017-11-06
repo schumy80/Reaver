@@ -32,6 +32,7 @@
  */
 
 #include "cracker.h"
+#include "utils/vendor.h"
 
 /* Brute force all possible WPS pins for a given access point */
 void crack()
@@ -76,7 +77,10 @@ void crack()
 		 */
 		cprintf(INFO, "[+] Waiting for beacon from %s\n", bssid);
 		read_ap_beacon();
-	
+		cprintf(INFO, "[+] Received beacon from %s\n", bssid);
+		char *vendor;
+		if((vendor = get_vendor_string(get_vendor())))
+			cprintf(INFO, "[+] Vendor: %s\n", vendor);
 		/* I'm fairly certian there's a reason I put this in twice. Can't remember what it was now though... */	
 		if(get_max_pin_attempts() == -1)
 		{
@@ -84,6 +88,7 @@ void crack()
 			return;
 		}
 
+		#if 0
 		/* This initial association is just to make sure we can successfully associate */
                 while(!reassociate())
                 {
@@ -97,7 +102,7 @@ void crack()
 				assoc_fail_count++;
 			}
                 }
-                cprintf(INFO, "[+] Associated with %s (ESSID: %s)\n", bssid, get_ssid());
+		#endif
 
 		/* Used to calculate pin attempt rates */
 		start_time = time(NULL);
@@ -181,7 +186,8 @@ void crack()
 					assoc_fail_count++;
 				}
                 	}
-			
+			cprintf(INFO, "[+] Associated with %s (ESSID: %s)\n", bssid, get_ssid());
+
 
 			/* 
 			 * Enter receive loop. This will block until a receive timeout occurs or a
