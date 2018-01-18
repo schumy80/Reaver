@@ -1,8 +1,8 @@
-reaver (1.6.4-0kali1) UNRELEASED; urgency=medium
+reaver (1.6.4-0kali1) kali-dev; urgency=medium
 
   * Upstream version
 
- -- Mati Aharoni <muts@localhost.localdomain>  Thu, 18 Jan 2018 18:18:42 -0500
+ -- Mati Aharoni <muts@kali.org>  Thu, 18 Jan 2018 18:18:42 -0500
 
 reaver (1.6.3-0kali1) kali-dev; urgency=medium
 
