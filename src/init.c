@@ -118,13 +118,47 @@ end:
 /* Initializes pcap capture settings and returns a pcap handle on success, NULL on error */
 pcap_t *capture_init(char *capture_source)
 {
-	pcap_t *handle = NULL;
+	pcap_t *handle;
 	char errbuf[PCAP_ERRBUF_SIZE] = { 0 };
-	
-	handle = pcap_open_live(capture_source, 65536, 1, 0, errbuf);
-	if(!handle)
-	{
-		handle = pcap_open_offline(capture_source, errbuf);
+	int status;
+
+	handle = pcap_open_offline(capture_source, errbuf);
+	if(handle) return handle;
+
+#ifdef __APPLE__
+	// must disassociate from any current AP.  This is the only way.
+	pid_t pid = fork();
+	if (!pid) {
+		char* argv[] = {"/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport", "-z", NULL};
+		execve("/System/Library/PrivateFrameworks/Apple80211.framework/Resources/airport", argv, NULL);
+	}
+	waitpid(pid,&status,0);
+#endif
+
+	handle = pcap_create(capture_source, errbuf);
+	if (handle) {
+		pcap_set_snaplen(handle, 65536);
+		pcap_set_timeout(handle, 50);
+		pcap_set_rfmon(handle, 1);
+		pcap_set_promisc(handle, 1);
+		if(!(status = pcap_activate(handle)))
+			return handle;
+		if(status == PCAP_ERROR_RFMON_NOTSUP) {
+			pcap_set_rfmon(handle, 0);
+			status = pcap_activate(handle);
+			if(!status) return handle;
+		}
+		cprintf(CRITICAL, "[X] ERROR: pcap_activate status %d\n", status);
+		if(status == PCAP_ERROR_NO_SUCH_DEVICE)
+			cprintf(CRITICAL, "[X] PCAP: no such device\n");
+		/* TODO : print nice error message for other codes */
+		pcap_close(handle);
+		handle = 0;
+	}
+
+	if(!handle) {
+		cprintf(CRITICAL, "couldn't get pcap handle, exiting\n");
+		exit(1);
 	}
 
 	return handle;

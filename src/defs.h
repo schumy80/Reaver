@@ -41,9 +41,10 @@
 #include <string.h>
 #include <time.h>
 #include <pcap.h>
-#include <asm/byteorder.h>
+#include "utils/endianness.h"
 
 #include "wps.h"
+#include "cprintf.h"
 
 #define NULL_MAC		"\x00\x00\x00\x00\x00\x00"
 #define DEFAULT_MAX_NUM_PROBES	15
@@ -57,6 +58,7 @@
 #define WPS_TAG_NUMBER		0xDD
 #define VENDOR_SPECIFIC_TAG	0xDD
 #define RSN_TAG_NUMBER		0x30
+#define HT_CAPS_TAG_NUMBER	0x2d
 
 #define CAPABILITY_WEP		0x10
 
@@ -88,18 +90,6 @@
 #define DEFAULT_LOCK_DELAY      60              /* Seconds */
 #define SEC_TO_US               1000000         /* uSeconds in a Second */
 
-#define TSFT_SIZE 		8
-#define FLAGS_SIZE 		1
-#define RATE_SIZE 		1
-#define CHANNEL_SIZE 		4
-#define FHSS_SIZE 		2
-
-#define TSFT_ALIGNMENT		8
-#define CHANNEL_ALIGNMENT	2
-
-#define RADIOTAP_ALIGN(offset, a) \
-	offset = (offset + (a) - 1) & ~((a) - 1)
-
 #define WPS_DEVICE_NAME		"Glau"
 #define WPS_MANUFACTURER	"Microsoft"
 #define WPS_MODEL_NAME		"Windows"
@@ -120,15 +110,6 @@ enum key_state
 	KEY1_WIP = 0,
 	KEY2_WIP = 1,
 	KEY_DONE = 2
-};
-
-enum debug_level
-{
-	CRITICAL = 0,
-	INFO = 1,
-	WARNING = 2,
-	VERBOSE = 3,
-	DEBUG = 4
 };
 
 enum eap_codes
@@ -188,16 +169,6 @@ enum wps_type
         M8 = 0x0C,
         DONE = 0x0F,
         NACK = 0x0E
-};
-
-enum rt_header_flags
-{
-	TSFT_FLAG = 0x01,
-	FLAGS_FLAG = 0x02,
-	RATE_FLAG = 0x04,
-	CHANNEL_FLAG = 0x08,
-	FHSS_FLAG = 0x10,
-	SSI_FLAG = 0x20,
 };
 
 enum wfa_elements
@@ -351,50 +322,57 @@ enum wfa_elements
 #define IEEE80211_STYPE_QOS_CFPOLL		0x00E0
 #define IEEE80211_STYPE_QOS_CFACKPOLL		0x00F0
 
+/* these types denote that the values are stored in a specific byte order */
+typedef uint16_t le16;
+typedef uint32_t le32;
+
+typedef uint16_t be16;
+typedef uint32_t be32;
+
 #pragma pack(1)
 struct radio_tap_header
 {
-	uint8_t revision;	
+	uint8_t revision;
 	uint8_t pad;
-	__le16 len;
-	__le32 flags;
+	le16 len;
+	le32 flags;
 };
 
 struct dot11_frame_header
 {
-	__le16 fc;
-	__le16 duration;
+	le16 fc;
+	le16 duration;
 	unsigned char addr1[MAC_ADDR_LEN];
 	unsigned char addr2[MAC_ADDR_LEN];
 	unsigned char addr3[MAC_ADDR_LEN];
-	__le16 frag_seq;
+	le16 frag_seq;
 };
 
 struct authentication_management_frame
 {
-	__le16 algorithm;
-	__le16 sequence;
-	__le16 status;
+	le16 algorithm;
+	le16 sequence;
+	le16 status;
 };
 
 struct association_request_management_frame
 {
-	__le16 capability;
-	__le16 listen_interval;
+	le16 capability;
+	le16 listen_interval;
 };
 
 struct association_response_management_frame
 {
-	__le16 capability;
-	__le16 status;
-	__le16 id;
+	le16 capability;
+	le16 status;
+	le16 id;
 };
 
 struct beacon_management_frame
 {
 	unsigned char timestamp[TIMESTAMP_LEN];
-	__le16 beacon_interval;
-	__le16 capability;
+	le16 beacon_interval;
+	le16 capability;
 };
 
 struct llc_header
@@ -403,7 +381,7 @@ struct llc_header
 	uint8_t ssap;
 	uint8_t control_field;
 	unsigned char org_code[3];
-	__be16 type;
+	be16 type;
 };
 
 struct dot1X_header
@@ -424,7 +402,7 @@ struct eap_header
 struct wfa_expanded_header
 {
 	unsigned char id[3];
-	__be32 type;
+	be32 type;
 	uint8_t opcode;
 	uint8_t flags;
 };

@@ -36,6 +36,9 @@
 #include "utils/vendor.h"
 #include "send.h"
 
+extern const char* get_version(void);
+static void wash_usage(char *prog);
+
 int show_all_aps = 0;
 int json_mode = 0;
 
@@ -97,7 +100,7 @@ static unsigned char *get_ap_vendor(char* bssid) {
 		return seen_list[x].vendor_oui+1;
 	return 0;
 }
-int main(int argc, char *argv[])
+int wash_main(int argc, char *argv[])
 {
 	int c = 0;
 	FILE *fp = NULL;
@@ -123,14 +126,14 @@ int main(int argc, char *argv[])
                 { 0, 0, 0, 0 }
         };
 
-	fprintf(stderr, "\nWash v%s WiFi Protected Setup Scan Tool\n", PACKAGE_VERSION);
+	fprintf(stderr, "\nWash v%s WiFi Protected Setup Scan Tool\n", get_version());
         fprintf(stderr, "Copyright (c) 2011, Tactical Network Solutions, Craig Heffner\n\n");
 
 	globule_init();
 	set_auto_channel_select(0);
 	set_wifi_band(BG_BAND);
 	set_debug(INFO);
-	set_validate_fcs(0);
+	set_validate_fcs(1);
 	set_log_file(stdout);
 	set_max_num_probes(DEFAULT_MAX_NUM_PROBES);
 
@@ -176,7 +179,7 @@ int main(int argc, char *argv[])
 				show_all_aps = 1;
 				break;
 			default:
-				usage(argv[0]);
+				wash_usage(argv[0]);
 				goto end;
 		}
 
@@ -195,7 +198,7 @@ int main(int argc, char *argv[])
 	/* The interface value won't be set if capture files were specified; else, there should have been an interface specified */
 	if(!get_iface() && source != PCAP_FILE)
 	{
-		usage(argv[0]);
+		wash_usage(argv[0]);
 		goto end;
 	}
 	else if(get_iface())
@@ -207,7 +210,7 @@ int main(int argc, char *argv[])
 	if(get_iface() && source == PCAP_FILE)
 	{
 		cprintf(CRITICAL, "[X] ERROR: -i and -f options cannot be used together.\n");
-		usage(argv[0]);
+		wash_usage(argv[0]);
 		goto end;
 	}
 
@@ -268,6 +271,7 @@ int main(int argc, char *argv[])
 		if(pcap_compile(get_handle(), &bpf, PACKET_FILTER, 0, 0) != 0)
 		{
 			cprintf(CRITICAL, "[X] ERROR: Failed to compile packet filter\n");
+			cprintf(CRITICAL, "[X] PCAP: %s\n", pcap_geterr(get_handle()));
 			goto end;
 		}
 		
@@ -366,7 +370,7 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
         }
 
 	rt_header = (struct radio_tap_header *) radio_header(packet, header->len);
-	size_t rt_header_len = __le16_to_cpu(rt_header->len);
+	size_t rt_header_len = end_le16toh(rt_header->len);
 	frame_header = (struct dot11_frame_header *) (packet + rt_header_len);
 
 	/* If a specific BSSID was specified, only parse packets from that BSSID */
@@ -400,10 +404,10 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 				channel_changed = 1;
 			}
 
-			unsigned fsub_type = frame_header->fc & __cpu_to_le16(IEEE80211_FCTL_STYPE);
+			unsigned fsub_type = frame_header->fc & end_htole16(IEEE80211_FCTL_STYPE);
 
-			int is_beacon = fsub_type == __cpu_to_le16(IEEE80211_STYPE_BEACON);
-			int is_probe_resp = fsub_type == __cpu_to_le16(IEEE80211_STYPE_PROBE_RESP);
+			int is_beacon = fsub_type == end_htole16(IEEE80211_STYPE_BEACON);
+			int is_probe_resp = fsub_type == end_htole16(IEEE80211_STYPE_PROBE_RESP);
 
 			if(is_probe_resp || is_beacon) {
 				wps_parsed = parse_wps_parameters(packet, header->len, wps);
@@ -434,10 +438,12 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 					} else lock_display = NO;
 
 					char* vendor = get_vendor_string(get_ap_vendor(bssid));
+					char* sane_ssid = sanitize_string(ssid);
 					if(wps->version > 0)
-						cprintf(INFO, "%17s  %3d  %.2d  %d.%d  %3s  %8s  %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, vendor ? vendor : "        ", ssid);
+						cprintf(INFO, "%17s  %3d  %.2d  %d.%d  %3s  %8s  %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, vendor ? vendor : "        ", sane_ssid);
 					else
-						cprintf(INFO, "%17s  %3d  %.2d            %8s  %s\n", bssid, channel, rssi, vendor ? vendor : "        ", ssid);
+						cprintf(INFO, "%17s  %3d  %.2d            %8s  %s\n", bssid, channel, rssi, vendor ? vendor : "        ", sane_ssid);
+					free(sane_ssid);
 				}
 
 				if(probe_sent)
@@ -496,7 +502,7 @@ void sigalrm_handler(int x)
 	next_channel();
 }
 
-void usage(char *prog)
+static void wash_usage(char *prog)
 {
 	fprintf(stderr, "Required Arguments:\n");
 	fprintf(stderr, "\t-i, --interface=<iface>              Interface to capture packets on\n");

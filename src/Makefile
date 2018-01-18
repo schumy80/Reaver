@@ -1,3 +1,7 @@
+srcdir = .
+INSTALL = ./install.sh
+MKDIRP = mkdir -p
+
 -include config.mak
 
 LIBWPS_DIR=libwps
@@ -5,7 +9,6 @@ INC=-Ilibwps -I. -Ilwe
 
 DISABLED_WARNINGS= \
  -Wno-unused-variable \
- -Wno-unused-but-set-variable \
  -Wno-unused-function \
  -Wno-pointer-sign
 
@@ -90,11 +93,9 @@ LIB_OBJS=libwps/libwps.o $(WPS_OBJS) $(UTILS_OBJS) \
 	$(TLS_OBJS) $(CRYPTO_OBJS) $(LWE_OBJS)
 
 
-WASH_OBJS=globule.o init.o misc.o 80211.o iface.o \
- builder.o crc.o pixie.o send.o sigalrm.o wpsmon.o
-REAVER_OBJS=argsparser.o globule.o init.o sigint.o iface.o sigalrm.o \
+PROG_OBJS=argsparser.o globule.o init.o sigint.o iface.o sigalrm.o \
  misc.o cracker.o session.o send.o pins.o 80211.o exchange.o builder.o \
- keys.o crc.o pixie.o wpscrack.o
+ keys.o crc.o pixie.o wpscrack.o wpsmon.o main.o version.o
 
 # Version of the Wireless Tools
 WT_VERSION := $(shell sed -ne "/WT_VERSION/{s:\([^0-9]*\)::;p;q;}" < lwe/iwlib.h )
@@ -103,6 +104,7 @@ WE_VERSION := $(shell sed -ne "/WE_VERSION/{s:\([^0-9]*\)::;p;q;}" < lwe/iwlib.h
 # Always use local header for wireless extensions
 WEXT_HEADER = lwe/wireless.$(WE_VERSION).h
 
+GENH = lwe/wireless.h version.h
 
 all: wash reaver
 
@@ -112,35 +114,35 @@ $(CRYPTO_OBJS): CFLAGS += -I. -Iutils -DCONFIG_TLS_INTERNAL_CLIENT \
  -DCONFIG_TLS_INTERNAL_SERVER -fno-strict-aliasing
 
 
-wash: $(WASH_OBJS) $(LIB_OBJS)
-	$(CC) $(CFLAGS) $(INC) $(WASH_OBJS) $(LIB_OBJS) $(LDFLAGS) -o wash
+wash: reaver
+	ln -sf ./reaver wash
 
-reaver: $(REAVER_OBJS) $(LIB_OBJS)
-	$(CC) $(CFLAGS) $(INC) $(REAVER_OBJS) $(LIB_OBJS) $(LDFLAGS) -o reaver
+reaver: $(PROG_OBJS) $(LIB_OBJS)
+	$(CC) $(CFLAGS) $(INC) $(PROG_OBJS) $(LIB_OBJS) $(LDFLAGS) -o reaver
+
+version.o: version.h
+version.h: $(wildcard $(srcdir)/VERSION $(srcdir)/../.git)
+	printf '#define R_VERSION "%s"\n' "$$(cd $(srcdir); sh version.sh)"  > $@
 
 lwe/wireless.h: $(WEXT_HEADER)
 	cp $(WEXT_HEADER) lwe/wireless.h
 
-$(WASH_OBJS) $(REAVER_OBJS) $(LWE_OBJS): lwe/wireless.h
+$(PROG_OBJS) $(LWE_OBJS): lwe/wireless.h
 
 install: wash reaver
-	install -D -m 755 wash $(DESTDIR)$(exec_prefix)/bin/wash
-	install -D -m 755 reaver $(DESTDIR)$(exec_prefix)/bin/reaver
+	$(INSTALL) -D -m 755 wash $(DESTDIR)$(exec_prefix)/bin/wash
+	$(INSTALL) -D -m 755 reaver $(DESTDIR)$(exec_prefix)/bin/reaver
 	@# create directory used to store *.wpc files;
 	@# if not found defaults to "." i.e. current dir
-	install -d $(DESTDIR)$(CONFDIR)
+	$(MKDIRP) $(DESTDIR)$(CONFDIR)
 
 clean:
-	rm -f *~ *.o reaver wash
-	rm -rf *.cache config.status config.log
-	rm -f $(LIB_OBJS)
-	rm -f lwe/wireless.h
+	rm -f reaver wash
+	rm -f $(LIB_OBJS) $(PROG_OBJS)
+	rm -f $(GENH)
 
-cleanbin: 
-	rm -f @bindir@/reaver @bindir@/wash @bindir@/walsh
-
-distclean: cleanbin clean
+distclean: clean
 	rm -rf $(CONFDIR)
 
-.PHONY: all clean cleanbin distclean install
+.PHONY: all clean distclean install
 

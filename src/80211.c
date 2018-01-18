@@ -31,35 +31,45 @@
  *  files in the program, then also delete it here.
  */
 
+#include "iface.h"
 #include "80211.h"
 #include "send.h"
+#include "utils/radiotap.h"
+#include "crc.h"
+#include <libwps.h>
+#include <assert.h>
+
+/* define NO_REPLAY_HTCAPS to 1 if you want to disable sending
+   ht caps in association request for testing */
+#ifndef NO_REPLAY_HTCAPS
+#define NO_REPLAY_HTCAPS 0
+#endif
+
+static void deauthenticate(void);
+static void authenticate(void);
+static void associate(void);
 
 /*Reads the next packet from pcap_next() and validates the FCS. */
-u_char *next_packet(struct pcap_pkthdr *header)
+unsigned char *next_packet(struct pcap_pkthdr *header)
 {
-	u_char *packet = NULL;
+	const unsigned char *packet = NULL;
+	struct pcap_pkthdr *pkt_header;
+	int status;
 
 	/* Loop until we get a valid packet, or until we run out of packets */
-	while((packet = (void*)pcap_next(get_handle(), header)) != NULL)
+	while((status = pcap_next_ex(get_handle(), &pkt_header, &packet)) == 1 || !status)
 	{
-		if(get_validate_fcs())
-		{
-			if(check_fcs(packet, header->len))
-			{
-				break;
-			}
-			else
-			{
-				cprintf(INFO, "[!] Found packet with bad FCS, skipping...\n");
-			}
-		}
-		else
-		{
-			break;
-		}
+		if(!status) continue; /* timeout */
+
+		memcpy(header, pkt_header, sizeof(*header));
+
+		if(get_validate_fcs() && !check_fcs(packet, header->len))
+			continue;
+
+		break;
 	}
 
-	return packet;
+	return (void*)packet;
 }
 
 /* 
@@ -69,7 +79,7 @@ u_char *next_packet(struct pcap_pkthdr *header)
 void read_ap_beacon()
 {
         struct pcap_pkthdr header;
-        const u_char *packet = NULL;
+        const unsigned char *packet = NULL;
         struct radio_tap_header *rt_header = NULL;
         struct dot11_frame_header *frame_header = NULL;
         struct beacon_management_frame *beacon = NULL;
@@ -91,16 +101,16 @@ void read_ap_beacon()
                 if(header.len >= MIN_BEACON_SIZE)
                 {
                         rt_header = (struct radio_tap_header *) radio_header(packet, header.len);
-			size_t rt_header_len = __le16_to_cpu(rt_header->len);
+			size_t rt_header_len = end_le16toh(rt_header->len);
 			frame_header = (struct dot11_frame_header *) (packet + rt_header_len);
 			
 			if(is_target(frame_header))
 			{
-                                if((frame_header->fc & __cpu_to_le16(IEEE80211_FCTL_FTYPE | IEEE80211_FCTL_STYPE)) ==
-				   __cpu_to_le16(IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON))
+                                if((frame_header->fc & end_htole16(IEEE80211_FCTL_FTYPE | IEEE80211_FCTL_STYPE)) ==
+				   end_htole16(IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON))
                                 {
                                        	beacon = (struct beacon_management_frame *) (packet + rt_header_len + sizeof(struct dot11_frame_header));
-                                       	set_ap_capability(__le16_to_cpu(beacon->capability));
+                                       	set_ap_capability(end_le16toh(beacon->capability));
 
 					/* Obtain the SSID and channel number from the beacon packet */
 					tag_offset = rt_header_len + sizeof(struct dot11_frame_header) + sizeof(struct beacon_management_frame);
@@ -127,62 +137,24 @@ void read_ap_beacon()
         }
 }
 
+#include "radiotap_flags.h"
+
 /* Extracts the signal strength field (if any) from the packet's radio tap header */
-int8_t signal_strength(const u_char *packet, size_t len)
+int8_t signal_strength(const unsigned char *packet, size_t len)
 {
-	int8_t ssi = 0;
-	int offset = sizeof(struct radio_tap_header);
-	struct radio_tap_header *header = NULL;
-	uint32_t flags, flags2;
-
-	if(has_rt_header() && (len > (sizeof(struct radio_tap_header) + TSFT_SIZE + FLAGS_SIZE + RATE_SIZE + CHANNEL_SIZE + FHSS_FLAG)))
+	if(has_rt_header() && (len > (sizeof(struct radio_tap_header))))
 	{
-		header = (struct radio_tap_header *) packet;
-
-		flags = flags2 = __le32_to_cpu(header->flags);
-		while ((flags2 & (1u << 31)) && offset <= len - 4)
-		{
-			flags2 = __le32_to_cpu(*(uint32_t *)(packet + offset));
-			offset += sizeof(flags2);
-		}
-
-		if((flags & SSI_FLAG) == SSI_FLAG)
-		{
-			if((flags & TSFT_FLAG) == TSFT_FLAG)
-			{
-				RADIOTAP_ALIGN(offset, TSFT_ALIGNMENT);
-				offset += TSFT_SIZE;
-			}
-
-			if((flags & FLAGS_FLAG) == FLAGS_FLAG)
-			{
-				offset += FLAGS_SIZE;
-			}
-	
-			if((flags & RATE_FLAG) == RATE_FLAG)
-			{
-				offset += RATE_SIZE;
-			}
-
-			if((flags & CHANNEL_FLAG) == CHANNEL_FLAG)
-			{
-				RADIOTAP_ALIGN(offset, CHANNEL_ALIGNMENT);
-				offset += CHANNEL_SIZE;
-			}
-
-			if((flags & FHSS_FLAG) == FHSS_FLAG)
-			{
-				offset += FHSS_SIZE;
-			}
-
-			if(offset < len)
-			{
-				ssi = (int8_t) packet[offset];
-			}
-		}
+		uint32_t offset, presentflags;
+		if(!rt_get_presentflags(packet, len, &presentflags, &offset))
+			return 0;
+		if(!(presentflags & (1U << IEEE80211_RADIOTAP_DBM_ANTSIGNAL)))
+			return 0;
+		offset = rt_get_flag_offset(presentflags, IEEE80211_RADIOTAP_DBM_ANTSIGNAL, offset);
+		if (offset < len)
+			return (int8_t) packet[offset];
 	}
 
-	return ssi;
+	return 0;
 }
 
 /* 
@@ -194,7 +166,7 @@ int is_wps_locked()
 	int locked = 0;
 	struct libwps_data wps = { 0 };
 	struct pcap_pkthdr header;
-        const u_char *packet = NULL;
+        const unsigned char *packet = NULL;
         struct radio_tap_header *rt_header = NULL;
         struct dot11_frame_header *frame_header = NULL;
 
@@ -209,13 +181,13 @@ int is_wps_locked()
 		if(header.len >= MIN_BEACON_SIZE)
 		{
 			rt_header = (struct radio_tap_header *) radio_header(packet, header.len);
-			size_t rt_header_len = __le16_to_cpu(rt_header->len);
+			size_t rt_header_len = end_le16toh(rt_header->len);
 			frame_header = (struct dot11_frame_header *) (packet + rt_header_len);
 
 			if(memcmp(frame_header->addr3, get_bssid(), MAC_ADDR_LEN) == 0)
 			{
-                                if((frame_header->fc & __cpu_to_le16(IEEE80211_FCTL_FTYPE | IEEE80211_FCTL_STYPE)) ==
-				   __cpu_to_le16(IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON))
+                                if((frame_header->fc & end_htole16(IEEE80211_FCTL_FTYPE | IEEE80211_FCTL_STYPE)) ==
+				   end_htole16(IEEE80211_FTYPE_MGMT | IEEE80211_STYPE_BEACON))
 				{
 					if(parse_wps_parameters(packet, header.len, &wps))
 					{
@@ -234,220 +206,55 @@ int is_wps_locked()
 	return locked;
 }
 
-/* Deauths and re-associates a MAC address with the AP. Returns 0 on failure, 1 for success. */
-int reassociate()
-{
-	int tries = 0, retval = 0;
-
-	/* Make sure we can still see beacons (also, read_ap_beaon will ensure we're on the right channel) */
-	read_ap_beacon();
-
-	if(!get_external_association())
-	{
-		/* Deauth to void any previous association with the AP */
-		deauthenticate();
-
-		/* Try MAX_AUTH_TRIES times to authenticate to the AP */
-		do
-		{
-			authenticate();
-			tries++;
-		}
-		while((associate_recv_loop() != AUTH_OK) && (tries < MAX_AUTH_TRIES));
-
-		/* If authentication was successful, try MAX_AUTH_TRIES to associate with the AP */
-		if(tries < MAX_AUTH_TRIES)
-		{
-			tries = 0;
-
-			do
-			{
-				associate();
-				tries++;
-			}
-			while((associate_recv_loop() != ASSOCIATE_OK) && (tries < MAX_AUTH_TRIES));
-		}
-
-		if(tries <= MAX_AUTH_TRIES)
-		{
-			retval = 1;
-		}
-		else
-		{
-			retval = 0;
-		}
-	}
-	else
-	{
-		retval = 1;
-	}
-
-	return retval;
-}
-
-/* Deauthenticate ourselves from the AP */
-void deauthenticate()
-{
-	const void *radio_tap = NULL, *dot11_frame = NULL, *packet = NULL;
-	size_t radio_tap_len = 0, dot11_frame_len = 0, packet_len = 0;
-	
-	radio_tap = build_radio_tap_header(&radio_tap_len);
-        dot11_frame = build_dot11_frame_header(FC_DEAUTHENTICATE, &dot11_frame_len);
-	packet_len = radio_tap_len + dot11_frame_len + DEAUTH_REASON_CODE_SIZE;
-
-	if(radio_tap && dot11_frame)
-	{
-		packet = malloc(packet_len);
-		if(packet)
-		{
-			memset((void *) packet, 0, packet_len);
-
-			memcpy((void *) packet, radio_tap, radio_tap_len);
-			memcpy((void *) ((char *) packet+radio_tap_len), dot11_frame, dot11_frame_len);
-			memcpy((void *) ((char *) packet+radio_tap_len+dot11_frame_len), DEAUTH_REASON_CODE, DEAUTH_REASON_CODE_SIZE);
-
-			send_packet(packet, packet_len, 0);
-
-			free((void *) packet);
-		}
-	}
-
-	if(radio_tap) free((void *) radio_tap);
-	if(dot11_frame) free((void *) dot11_frame);
-
-	return;
-}
-
-/* Authenticate ourselves with the AP */
-void authenticate()
-{
-	const void *radio_tap = NULL, *dot11_frame = NULL, *management_frame = NULL, *packet = NULL;
-	size_t radio_tap_len = 0, dot11_frame_len = 0, management_frame_len = 0, packet_len = 0;
-
-	radio_tap = build_radio_tap_header(&radio_tap_len);
-	dot11_frame = build_dot11_frame_header(FC_AUTHENTICATE, &dot11_frame_len);
-	management_frame = build_authentication_management_frame(&management_frame_len);
-	packet_len = radio_tap_len + dot11_frame_len + management_frame_len;
-
-	if(radio_tap && dot11_frame && management_frame)
-	{
-		packet = malloc(packet_len);
-		if(packet)
-		{
-			memset((void *) packet, 0, packet_len);
-
-			memcpy((void *) packet, radio_tap, radio_tap_len);
-			memcpy((void *) ((char *) packet+radio_tap_len), dot11_frame, dot11_frame_len);
-			memcpy((void *) ((char *) packet+radio_tap_len+dot11_frame_len), management_frame, management_frame_len);
-
-			send_packet(packet, packet_len, 0);
-
-			free((void *) packet);
-		}
-	}
-
-	if(radio_tap) free((void *) radio_tap);
-	if(dot11_frame) free((void *) dot11_frame);
-	if(management_frame) free((void *) management_frame);
-
-	return;
-}
-
-/* Associate with the AP */
-void associate()
-{
-	const void *radio_tap = NULL, *dot11_frame = NULL, *management_frame = NULL, *ssid_tag = NULL, *wps_tag = NULL, *rates_tag = NULL, *packet = NULL;
-        size_t radio_tap_len = 0, dot11_frame_len = 0, management_frame_len = 0, ssid_tag_len = 0, wps_tag_len = 0, rates_tag_len = 0, packet_len = 0, offset = 0;
-
-        radio_tap = build_radio_tap_header(&radio_tap_len);
-        dot11_frame = build_dot11_frame_header(FC_ASSOCIATE, &dot11_frame_len);
-        management_frame = build_association_management_frame(&management_frame_len);
-	ssid_tag = build_ssid_tagged_parameter(&ssid_tag_len);
-	rates_tag = build_supported_rates_tagged_parameter(&rates_tag_len);
-	wps_tag = build_wps_tagged_parameter(&wps_tag_len);
-        packet_len = radio_tap_len + dot11_frame_len + management_frame_len + ssid_tag_len + wps_tag_len + rates_tag_len;
-	
-	if(radio_tap && dot11_frame && management_frame && ssid_tag && wps_tag && rates_tag)
-        {
-                packet = malloc(packet_len);
-                if(packet)
-                {
-                        memset((void *) packet, 0, packet_len);
-
-                        memcpy((void *) packet, radio_tap, radio_tap_len);
-			offset += radio_tap_len;
-                        memcpy((void *) ((char *) packet+offset), dot11_frame, dot11_frame_len);
-			offset += dot11_frame_len;
-                        memcpy((void *) ((char *) packet+offset), management_frame, management_frame_len);
-			offset += management_frame_len;
-			memcpy((void *) ((char *) packet+offset), ssid_tag, ssid_tag_len);
-			offset += ssid_tag_len;
-			memcpy((void *) ((char *) packet+offset), rates_tag, rates_tag_len);
-			offset += rates_tag_len;
-			memcpy((void *) ((char *) packet+offset), wps_tag, wps_tag_len);
-
-                        send_packet(packet, packet_len, 0);
-
-                        free((void *) packet);
-                }
-        }
-
-        if(radio_tap) free((void *) radio_tap);
-        if(dot11_frame) free((void *) dot11_frame);
-        if(management_frame) free((void *) management_frame);
-	if(ssid_tag) free((void *) ssid_tag);
-	if(wps_tag) free((void *) wps_tag);
-	if(rates_tag) free((void *) rates_tag);
-
-	return;
-}
 
 /* Waits for authentication and association responses from the target AP */
-int associate_recv_loop()
+static int process_authenticate_associate_resp(int want_assoc)
 {
 	struct pcap_pkthdr header;
-	u_char *packet;
+	unsigned char *packet;
 	struct radio_tap_header *rt_header;
 	struct dot11_frame_header *dot11_frame;
 	struct authentication_management_frame *auth_frame;
 	struct association_response_management_frame *assoc_frame;
-	int ret_val = 0, start_time = 0;
+	int ret_val = 0;
 
-	start_time = time(NULL);
+	start_timer();
 
-	while((time(NULL) - start_time) < ASSOCIATE_WAIT_TIME)
+	while(!get_out_of_time())
 	{
 		if((packet = next_packet(&header)) == NULL) break;
 
 		if(header.len < MIN_AUTH_SIZE) continue;
 
 		rt_header = (void*) radio_header(packet, header.len);
-		size_t rt_header_len = __le16_to_cpu(rt_header->len);
+		size_t rt_header_len = end_le16toh(rt_header->len);
 		dot11_frame = (void*)(packet + rt_header_len);
 
 		if((memcmp(dot11_frame->addr3, get_bssid(), MAC_ADDR_LEN) != 0) ||
 		   (memcmp(dot11_frame->addr1, get_mac(), MAC_ADDR_LEN) != 0))
 			continue;
 
-		int isMgmtFrame = (dot11_frame->fc & __cpu_to_le16(IEEE80211_FCTL_FTYPE)) == __cpu_to_le16(IEEE80211_FTYPE_MGMT);
+		int isMgmtFrame = (dot11_frame->fc & end_htole16(IEEE80211_FCTL_FTYPE)) == end_htole16(IEEE80211_FTYPE_MGMT);
 		if(!isMgmtFrame) continue;
 
 		void *ptr = (packet + sizeof(struct dot11_frame_header) + rt_header_len);
 		auth_frame = ptr;
 		assoc_frame = ptr;
 
-		int isAuthResp = (dot11_frame->fc & __cpu_to_le16(IEEE80211_FCTL_STYPE)) == __cpu_to_le16(IEEE80211_STYPE_AUTH);
-		int isAssocResp = (dot11_frame->fc & __cpu_to_le16(IEEE80211_FCTL_STYPE)) == __cpu_to_le16(IEEE80211_STYPE_ASSOC_RESP);
+		int isAuthResp = (dot11_frame->fc & end_htole16(IEEE80211_FCTL_STYPE)) == end_htole16(IEEE80211_STYPE_AUTH);
+		int isAssocResp = (dot11_frame->fc & end_htole16(IEEE80211_FCTL_STYPE)) == end_htole16(IEEE80211_STYPE_ASSOC_RESP);
 
 		if(!isAuthResp && !isAssocResp) continue;
 
+		if(isAuthResp && want_assoc) continue;
+
 		/* Did we get an authentication packet with a successful status? */
-		if(isAuthResp && (auth_frame->status == __cpu_to_le16(AUTHENTICATION_SUCCESS))) {
+		if(isAuthResp && (auth_frame->status == end_htole16(AUTHENTICATION_SUCCESS))) {
 			ret_val = AUTH_OK;
 			break;
 		}
 		/* Did we get an association packet with a successful status? */
-		else if(isAssocResp && (assoc_frame->status == __cpu_to_le16(ASSOCIATION_SUCCESS))) {
+		else if(isAssocResp && (assoc_frame->status == end_htole16(ASSOCIATION_SUCCESS))) {
 			ret_val = ASSOCIATE_OK;
 			break;
 		}
@@ -456,13 +263,163 @@ int associate_recv_loop()
         return ret_val;
 }
 
+
+
+/* Deauths and re-associates a MAC address with the AP. Returns 0 on failure, 1 for success. */
+int reassociate(void)
+{
+	if (get_external_association()) return 1;
+
+	int state = 0, ret;
+
+	while(1) {
+		switch(state) {
+			case 0:
+				deauthenticate();
+				state++;
+				break;
+			case 1:
+				authenticate();
+				state++;
+				break;
+			case 2:
+				ret = process_authenticate_associate_resp(0);
+				if(ret) state++;
+				else return 0;
+				break;
+			case 3:
+				associate();
+				state++;
+				break;
+			case 4:
+				ret = process_authenticate_associate_resp(0);
+				if(ret) state++;
+				else return 0;
+				break;
+			case 5:
+				return 1;
+
+		}
+	}
+}
+
+/* Deauthenticate ourselves from the AP */
+static void deauthenticate(void)
+{
+	size_t radio_tap_len, dot11_frame_len, packet_len, offset = 0;
+	struct radio_tap_header radio_tap;
+	struct dot11_frame_header dot11_frame;
+
+	radio_tap_len = build_radio_tap_header(&radio_tap);
+        dot11_frame_len = build_dot11_frame_header(&dot11_frame, FC_DEAUTHENTICATE);
+	packet_len = radio_tap_len + dot11_frame_len + DEAUTH_REASON_CODE_SIZE;
+
+	unsigned char packet[sizeof radio_tap + sizeof dot11_frame + DEAUTH_REASON_CODE_SIZE];
+	assert(sizeof packet == packet_len);
+
+	memcpy(packet, &radio_tap, radio_tap_len);
+	offset += radio_tap_len;
+	memcpy(packet + offset, &dot11_frame, dot11_frame_len);
+	offset += dot11_frame_len;
+	memcpy(packet + offset, DEAUTH_REASON_CODE, DEAUTH_REASON_CODE_SIZE);
+
+	send_packet(packet, packet_len, 1);
+}
+
+/* Authenticate ourselves with the AP */
+static void authenticate(void)
+{
+	size_t radio_tap_len, dot11_frame_len, management_frame_len, packet_len, offset;
+	struct radio_tap_header radio_tap;
+	struct dot11_frame_header dot11_frame;
+	struct authentication_management_frame management_frame;
+
+	radio_tap_len = build_radio_tap_header(&radio_tap);
+	dot11_frame_len = build_dot11_frame_header(&dot11_frame, FC_AUTHENTICATE);
+	management_frame_len = build_authentication_management_frame(&management_frame);
+
+	packet_len = radio_tap_len + dot11_frame_len + management_frame_len;
+
+	unsigned char packet[ sizeof (struct radio_tap_header)
+			    + sizeof (struct dot11_frame_header)
+			    + sizeof (struct authentication_management_frame)];
+
+	assert(packet_len == sizeof packet);
+
+	offset = 0;
+
+	memcpy(packet + offset, &radio_tap, radio_tap_len);
+	offset += radio_tap_len;
+	memcpy(packet + offset, &dot11_frame, dot11_frame_len);
+	offset += dot11_frame_len;
+	memcpy(packet + offset, &management_frame, management_frame_len);
+
+	send_packet(packet, packet_len, 1);
+	cprintf(VERBOSE, "[+] Sending authentication request\n");
+}
+
+/* Associate with the AP */
+static void associate(void)
+{
+        size_t radio_tap_len, dot11_frame_len, management_frame_len, ssid_tag_len,
+		wps_tag_len, rates_tag_len, ht_tag_len, packet_len, offset = 0;
+	struct radio_tap_header radio_tap;
+	struct dot11_frame_header dot11_frame;
+	struct association_request_management_frame management_frame;
+	char *essid = get_ssid();
+	if(!essid) essid = "";
+	unsigned char ssid_tag[sizeof (struct tagged_parameter) + IW_ESSID_MAX_SIZE];
+	unsigned char rates_tag[128];
+	unsigned char wps_tag[sizeof (struct tagged_parameter) + WPS_TAG_SIZE];
+	unsigned char ht_tag[128];
+
+
+        radio_tap_len = build_radio_tap_header(&radio_tap);
+        dot11_frame_len = build_dot11_frame_header(&dot11_frame, FC_ASSOCIATE);
+        management_frame_len = build_association_management_frame(&management_frame);
+	ssid_tag_len = build_ssid_tagged_parameter(ssid_tag, essid);
+	rates_tag_len = build_supported_rates_tagged_parameter(rates_tag, sizeof rates_tag);
+	wps_tag_len = build_wps_tagged_parameter(wps_tag);
+
+	if(!NO_REPLAY_HTCAPS) {
+		ht_tag_len = build_htcaps_parameter(ht_tag, sizeof ht_tag);
+	} else {
+		ht_tag_len = 0;
+	}
+        packet_len = radio_tap_len + dot11_frame_len + management_frame_len + ssid_tag_len + wps_tag_len + rates_tag_len + ht_tag_len;
+
+	unsigned char packet[512];
+	assert(packet_len < sizeof packet);
+
+	memcpy(packet, &radio_tap, radio_tap_len);
+	offset += radio_tap_len;
+	memcpy(packet+offset, &dot11_frame, dot11_frame_len);
+	offset += dot11_frame_len;
+	memcpy(packet+offset, &management_frame, management_frame_len);
+	offset += management_frame_len;
+	memcpy(packet+offset, ssid_tag, ssid_tag_len);
+	offset += ssid_tag_len;
+	memcpy(packet+offset, rates_tag, rates_tag_len);
+	offset += rates_tag_len;
+
+	memcpy(packet+offset, ht_tag, ht_tag_len);
+	offset += ht_tag_len;
+
+	memcpy(packet+offset, wps_tag, wps_tag_len);
+
+	send_packet(packet, packet_len, 1);
+	cprintf(VERBOSE, "[+] Sending association request\n");
+
+}
+
+
 /* Given a beacon / probe response packet, returns the reported encryption type (WPA, WEP, NONE)
    THIS IS BROKE!!! DO NOT USE!!!
 */
-enum encryption_type supported_encryption(const u_char *packet, size_t len)
+enum encryption_type supported_encryption(const unsigned char *packet, size_t len)
 {
 	enum encryption_type enc = NONE;
-	const u_char *tag_data = NULL;
+	const unsigned char *tag_data = NULL;
 	struct radio_tap_header *rt_header = NULL;
 	size_t vlen = 0, voff = 0, tag_offset = 0, tag_len = 0, offset = 0;
 	struct beacon_management_frame *beacon = NULL;
@@ -470,14 +427,14 @@ enum encryption_type supported_encryption(const u_char *packet, size_t len)
 	if(len > MIN_BEACON_SIZE)
 	{
 		rt_header = (struct radio_tap_header *) radio_header(packet, len);
-		size_t rt_header_len = __le16_to_cpu(rt_header->len);
+		size_t rt_header_len = end_le16toh(rt_header->len);
 		beacon = (struct beacon_management_frame *) (packet + rt_header_len + sizeof(struct dot11_frame_header));
 		offset = tag_offset = rt_header_len + sizeof(struct dot11_frame_header) + sizeof(struct beacon_management_frame);
 		
 		tag_len = len - tag_offset;
-		tag_data = (const u_char *) (packet + tag_offset);
+		tag_data = (const unsigned char *) (packet + tag_offset);
 
-		if((__le16_to_cpu(beacon->capability) & CAPABILITY_WEP) == CAPABILITY_WEP)
+		if((end_le16toh(beacon->capability) & CAPABILITY_WEP) == CAPABILITY_WEP)
 		{
 			enc = WEP;
 
@@ -492,7 +449,7 @@ enum encryption_type supported_encryption(const u_char *packet, size_t len)
 				while(offset < len)
 				{
 					tag_len = len - offset;
-					tag_data = (const u_char *) (packet + offset);
+					tag_data = (const unsigned char *) (packet + offset);
 
 					tag_data = parse_ie_data(tag_data, tag_len, (uint8_t) VENDOR_SPECIFIC_TAG, &vlen, &voff);
 					if(vlen > WPA_IE_ID_LEN)
@@ -514,30 +471,31 @@ enum encryption_type supported_encryption(const u_char *packet, size_t len)
 	return enc;
 }
 
-static int get_next_ie(const u_char *data, size_t len, size_t *currpos) {
+static int get_next_ie(const unsigned char *data, size_t len, size_t *currpos) {
 	if(*currpos + 2 >= len) return 0;
 	*currpos = *currpos + 2 + data[*currpos + 1];
+	if(*currpos >= len) return 0;
 	return 1;
 }
 
 /* Given the tagged parameter sets from a beacon packet, locate the AP's SSID and return its current channel number */
-int parse_beacon_tags(const u_char *packet, size_t len)
+int parse_beacon_tags(const unsigned char *packet, size_t len)
 {
 	set_vendor(0, "\0\0\0");
 	char *ssid = NULL;
-	const u_char *tag_data = NULL;
+	const unsigned char *tag_data = NULL;
 	unsigned char *ie = NULL, *channel_data = NULL;
 	size_t ie_len = 0, ie_offset = 0, tag_len = 0, tag_offset = 0;
 	int channel = 0;
 	struct radio_tap_header *rt_header = NULL;
 
 	rt_header = (struct radio_tap_header *) radio_header(packet, len);
-	tag_offset = __le16_to_cpu(rt_header->len) + sizeof(struct dot11_frame_header) + sizeof(struct beacon_management_frame);
+	tag_offset = end_le16toh(rt_header->len) + sizeof(struct dot11_frame_header) + sizeof(struct beacon_management_frame);
 
 	if(tag_offset < len)
 	{
 		tag_len = (len - tag_offset); /* this actually denotes length of the entire tag data area */
-		tag_data = (const u_char *) (packet + tag_offset);
+		tag_data = (const unsigned char *) (packet + tag_offset);
 
 		/* If no SSID was manually specified, parse and save the AP SSID */
 		if(get_ssid() == NULL)
@@ -557,6 +515,13 @@ int parse_beacon_tags(const u_char *packet, size_t len)
 
 				free(ie);
 			}
+		}
+
+		ie = parse_ie_data(tag_data, tag_len, HT_CAPS_TAG_NUMBER, &ie_len, &ie_offset);
+		if(ie)
+		{
+			set_ap_htcaps(ie, ie_len);
+			free(ie);
 		}
 
 		ie = parse_ie_data(tag_data, tag_len, (uint8_t) RATES_TAG_NUMBER, &ie_len, &ie_offset);
@@ -585,12 +550,12 @@ int parse_beacon_tags(const u_char *packet, size_t len)
 
 		size_t ie_iterator = 0;
 		do {
-			const u_char *tag = tag_data + ie_iterator;
+			const unsigned char *tag = tag_data + ie_iterator;
 			// check for the length of the tag, and that its not microsoft
 			if(tag[0] == VENDOR_SPECIFIC_TAG &&
-			   tag[1] < 11 &&
 			   ie_iterator+2+3 < tag_len &&
-			   memcmp(tag+2, "\x00\x50\xf2", 3)) {
+			   ((tag[1] < 11 && memcmp(tag+2, "\x00\x14\x6c", 3) && memcmp(tag+2, "\x00\x50\xf2", 3)) ||
+			    (tag[1] == 30 && !(memcmp(tag+2, "\x00\x26\x86", 3))))) {
 				set_vendor(1, tag + 2);
 				break;
 			}
@@ -602,7 +567,7 @@ int parse_beacon_tags(const u_char *packet, size_t len)
 }
 
 /* Gets the data for a given IE inside a tagged parameter list */
-unsigned char *parse_ie_data(const u_char *data, size_t len, uint8_t tag_number, size_t *ie_len, size_t *ie_offset)
+unsigned char *parse_ie_data(const unsigned char *data, size_t len, uint8_t tag_number, size_t *ie_len, size_t *ie_offset)
 {
 	unsigned char *tag_data = NULL;
         int offset = 0, tag_size = 0;
@@ -638,23 +603,42 @@ unsigned char *parse_ie_data(const u_char *data, size_t len, uint8_t tag_number,
 }
 
 /* Validates a packet's reported FCS value */
-int check_fcs(const u_char *packet, size_t len)
+int check_fcs(const unsigned char *packet, size_t len)
 {
-	int offset = 0, match = 0;
+	uint32_t offset = 0, match = 0;
 	uint32_t fcs = 0, fcs_calc = 0;
 	struct radio_tap_header *rt_header = NULL;
-	
+
 	if(len > 4)
 	{
-		/* Get the packet's reported FCS (last 4 bytes of the packet) */
-		fcs = __le32_to_cpu(*(uint32_t*)(packet + (len-4)));
 
 		/* FCS is not calculated over the radio tap header */
-		if(has_rt_header())
+		if(has_rt_header() && len >= sizeof(*rt_header))
 		{
+			uint32_t presentflags, flags;
+			if(!rt_get_presentflags(packet, len, &presentflags, &offset))
+				goto skip;
+			if(!(presentflags & (1U << IEEE80211_RADIOTAP_FLAGS)))
+				goto skip;
+			offset = rt_get_flag_offset(presentflags, IEEE80211_RADIOTAP_FLAGS, offset);
+			if(offset < len) {
+				memcpy(&flags, packet + offset, 4);
+				flags = end_le32toh(flags);
+				if(flags & IEEE80211_RADIOTAP_F_BADFCS)
+					return 0;
+				if(!(flags & IEEE80211_RADIOTAP_F_FCS))
+					return 1;
+			}
+
+			skip:
 			rt_header = (struct radio_tap_header *) packet;
-			offset += __le16_to_cpu(rt_header->len);
+			offset = end_le16toh(rt_header->len);
+
 		}
+
+		/* Get the packet's reported FCS (last 4 bytes of the packet) */
+		fcs = end_le32toh(*(uint32_t*)(packet + (len-4)));
+
 
 		if(len > offset)
 		{
@@ -669,7 +653,7 @@ int check_fcs(const u_char *packet, size_t len)
 	}
 
 	return match;
-	
+
 }
 
 /* Checks a given BSSID to see if it's on our target list */
@@ -705,7 +689,7 @@ int has_rt_header(void)
  * Returns a pointer to the radio tap header. If there is no radio tap header,
  * it returns a pointer to a dummy radio tap header.
  */
-u_char *radio_header(const u_char *packet, size_t len)
+unsigned char *radio_header(const unsigned char *packet, size_t len)
 {
         if(has_rt_header())
         {

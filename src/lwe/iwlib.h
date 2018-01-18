@@ -21,6 +21,7 @@
 #define _GNU_SOURCE
 #undef _BSD_SOURCE
 #define _BSD_SOURCE
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/ioctl.h>
 #include <stdio.h>
@@ -55,6 +56,10 @@
 
 /* Private copy of Wireless extensions (in this directoty) */
 #include "wireless.h"
+
+#ifndef ETH_ALEN
+#define ETH_ALEN 6
+#endif
 
 /* Make gcc understant that when we say inline, we mean it.
  * I really hate when the compiler is trying to be more clever than me,
@@ -505,7 +510,7 @@ iw_set_ext(int			skfd,		/* Socket to the kernel */
 	   struct iwreq *	pwrq)		/* Fixed part of the request */
 {
   /* Set device name */
-  strncpy(pwrq->ifr_name, ifname, IFNAMSIZ);
+  strncpy(pwrq->ifr_ifrn.ifrn_name, ifname, IFNAMSIZ);
   /* Do the request */
   return(ioctl(skfd, request, pwrq));
 }
@@ -521,7 +526,7 @@ iw_get_ext(int			skfd,		/* Socket to the kernel */
 	   struct iwreq *	pwrq)		/* Fixed part of the request */
 {
   /* Set device name */
-  strncpy(pwrq->ifr_name, ifname, IFNAMSIZ);
+  strncpy(pwrq->ifr_ifrn.ifrn_name, ifname, IFNAMSIZ);
   /* Do the request */
   return(ioctl(skfd, request, pwrq));
 }

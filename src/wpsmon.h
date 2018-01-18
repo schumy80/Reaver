@@ -46,7 +46,6 @@
 #include "iface.h"
 #include "80211.h"
 #include "builder.h"
-#include "config.h"
 
 #define INTERFACE       	0
 #define PCAP_FILE       	1
@@ -103,6 +102,5 @@ int is_dup(unsigned char *bssid);
 void mark_bssid(unsigned char *bssid);
 void free_bssid_list(unsigned char **list, int count);
 void sigalrm_handler(int x);
-void usage(char *prog);
 
 #endif
