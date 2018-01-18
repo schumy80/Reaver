@@ -33,6 +33,8 @@
 
 #include "globule.h"
 
+struct globals *globule;
+
 int globule_init()
 {
 	int ret = 0;
@@ -42,6 +44,8 @@ int globule_init()
 	{
 		memset(globule, 0, sizeof(struct globals));
 		ret = 1;
+		globule->resend_timeout_usec = 200000;
+
 	}
 
 	return ret;
@@ -531,6 +535,20 @@ struct wps_data *get_wps()
 	return globule->wps;
 }
 
+void set_ap_htcaps(unsigned char *value, int len)
+{
+	free(globule->htcaps);
+	globule->htcaps = malloc(len);
+	globule->htcaps_len = len;
+	memcpy(globule->htcaps, value, len);
+}
+
+unsigned char *get_ap_htcaps(int *len)
+{
+	*len = globule->htcaps_len;
+	return globule->htcaps;
+}
+
 void set_ap_rates(unsigned char *value, int len)
 {
 	if(globule->ap_rates)
@@ -610,4 +628,13 @@ unsigned char *get_vendor(void) {
 	if(!globule->vendor_oui[0]) return 0;
 	return globule->vendor_oui+1;
 }
+
+void set_repeat_m6(int val) {
+	globule->repeat_m6 = val;
+}
+
+int get_repeat_m6(void) {
+	return globule->repeat_m6;
+}
+
 
