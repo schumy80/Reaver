@@ -14,7 +14,7 @@ The first version of **reaver-wps** (reaver 1.0) was created by **Craig Heffner*
 Reaver versioning was updated to **1.6.x** in order to identify the new cycle.  
 All stable relases since the first beta version of reaver 1.6 can be downloaded from our [Releases](https://github.com/t6x/reaver-wps-fork-t6x/releases) page.  
 * More information about the Pixie Dust attack (including **which APs are vulnerable**) can be found in [pixiewps repository](https://github.com/wiire/pixiewps), 
-[pixie dust thread in Kali forum)](https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-(Offline-WPS-Attack) &                                                                    [Dominique Bongard's full disclosure](https://docs.google.com/spreadsheets/d/1tSlbqVQ59kGn8hgmwcPTHUECQ3o9YhXR91A_p7Nnj5Y/edit?usp=sharing)
+[pixie dust thread (in Kali forum)](https://forums.kali.org/showthread.php?24286-WPS-Pixie-Dust-Attack-(Offline-WPS-Attack)) & [Dominique Bongard's full disclosure](https://docs.google.com/spreadsheets/d/1tSlbqVQ59kGn8hgmwcPTHUECQ3o9YhXR91A_p7Nnj5Y/edit?usp=sharing)
 
 - - -
 
@@ -68,7 +68,7 @@ or
 
 # Reaver Usage
 
-```Reaver v1.6.4 WiFi Protected Setup Attack Tool
+```
 Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>
 
 Required Arguments:
@@ -79,10 +79,8 @@ Optional Arguments:
 	-m, --mac=<mac>                 MAC of the host system
 	-e, --essid=<ssid>              ESSID of the target AP
 	-c, --channel=<channel>         Set the 802.11 channel for the interface (implies -f)
-	-o, --out-file=<file>           Send output to a log file [stdout]
 	-s, --session=<file>            Restore a previous session file
 	-C, --exec=<command>            Execute the supplied command upon successful pin recovery
-	-D, --daemonize                 Daemonize reaver
 	-f, --fixed                     Disable channel hopping
 	-5, --5ghz                      Use 5GHz 802.11 channels
 	-v, --verbose                   Display non-critical warnings (-vv or -vvv for more)
@@ -104,12 +102,13 @@ Advanced Options:
 	-L, --ignore-locks              Ignore locked state reported by the target AP
 	-E, --eap-terminate             Terminate each WPS session with an EAP FAIL packet
 	-J, --timeout-is-nack           Treat timeout as NACK (DIR-300/320)
+	-F, --ignore-fcs                Ignore frame checksum errors
 	-w, --win7                      Mimic a Windows 7 registrar [False]
 	-K, --pixie-dust                Run pixiedust attack
 	-Z                              Run pixiedust attack
 
 Example:
-	./reaver -i wlan0mon -b 00:90:4C:C1:AC:21 -vv
+	reaver -i wlan0mon -b 00:90:4C:C1:AC:21 -vv
  ```  
  
 Options description and examples of use can be found in the [Readme from Craig Heffner](https://github.com/t6x/reaver-wps-fork-t6x/blob/master/docs/README.REAVER). Here comes a description of the new options introduced since then:  
@@ -124,7 +123,6 @@ See our wiki: [Introducing a new way to crack WPS: Option p with an Arbitrary St
 # Wash Usage  
 
 ```
-Wash v1.6.3 WiFi Protected Setup Scan Tool
 Copyright (c) 2011, Tactical Network Solutions, Craig Heffner
 
 Required Arguments:
@@ -133,9 +131,9 @@ Required Arguments:
 
 Optional Arguments:
 	-c, --channel=<num>                  Channel to listen on [auto]
-	-o, --out-file=<file>                Write data to file
 	-n, --probes=<num>                   Maximum number of probes to send to each AP in scan mode [15]
-	-D, --daemonize                      Daemonize wash
+	-F, --ignore-fcs                     Ignore frame checksum errors
+	-2, --2ghz                           Use 2.4GHz 802.11 channels
 	-5, --5ghz                           Use 5GHz 802.11 channels
 	-s, --scan                           Use scan mode
 	-u, --survey                         Use survey mode [default]
@@ -148,12 +146,14 @@ Example:
 ```
 
 A detailed description of the options with  concrete syntax examples can be found in [Craig Heffner's wash readme](https://github.com/t6x/reaver-wps-fork-t6x/blob/master/docs/README.WASH).  
-About the new options: 
+About the new options and features: 
 ## -a  //  --all  
 The option `-a` of Wash will list all access points, including those without WPS enabled.  
 ## -j  //  --json  
 The extended WPS information (serial, model...) from the AP probe answer will be printed in the terminal (in json format)  
-
+## "Vendor" column  
+Wash now displays the manufacturer of the wifi chipset from the Acces Points in order to know if they are vulnerable to pixie dust attack.  
+## Stdout can be piped  
 Notice that wash output can be piped into other commands. For more information see the wiki article [Everything about the new options from wash](https://github.com/t6x/reaver-wps-fork-t6x/wiki/Everything-about-the-new-options-from-wash)  
   
 # Acknowledgements
