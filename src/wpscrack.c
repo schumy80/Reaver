@@ -152,10 +152,8 @@ static int reaver_usage(char *prog_name)
         fprintf(stderr, "\t-m, --mac=<mac>                 MAC of the host system\n");
         fprintf(stderr, "\t-e, --essid=<ssid>              ESSID of the target AP\n");
         fprintf(stderr, "\t-c, --channel=<channel>         Set the 802.11 channel for the interface (implies -f)\n");
-	fprintf(stderr, "\t-o, --out-file=<file>           Send output to a log file [stdout]\n");
 	fprintf(stderr, "\t-s, --session=<file>            Restore a previous session file\n");
 	fprintf(stderr, "\t-C, --exec=<command>            Execute the supplied command upon successful pin recovery\n");
-	fprintf(stderr, "\t-D, --daemonize                 Daemonize reaver\n");
         fprintf(stderr, "\t-f, --fixed                     Disable channel hopping\n");
         fprintf(stderr, "\t-5, --5ghz                      Use 5GHz 802.11 channels\n");
         //fprintf(stderr, "\t-6, --repeat-m6                 Send M6 again upon duplicated M5 reception\n");
@@ -178,6 +176,7 @@ static int reaver_usage(char *prog_name)
         fprintf(stderr, "\t-L, --ignore-locks              Ignore locked state reported by the target AP\n");
         fprintf(stderr, "\t-E, --eap-terminate             Terminate each WPS session with an EAP FAIL packet\n");
         fprintf(stderr, "\t-J, --timeout-is-nack           Treat timeout as NACK (DIR-300/320)\n");
+        fprintf(stderr, "\t-F, --ignore-fcs                Ignore frame checksum errors\n");
 	fprintf(stderr, "\t-w, --win7                      Mimic a Windows 7 registrar [False]\n");
 	fprintf(stderr, "\t-K, --pixie-dust                Run pixiedust attack\n");
 	fprintf(stderr, "\t-Z                              Run pixiedust attack\n");

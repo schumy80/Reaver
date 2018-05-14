@@ -48,12 +48,15 @@
 static void deauthenticate(void);
 static void authenticate(void);
 static void associate(void);
+static int check_fcs(const unsigned char *packet, size_t len);
+
 
 /*Reads the next packet from pcap_next() and validates the FCS. */
 unsigned char *next_packet(struct pcap_pkthdr *header)
 {
 	const unsigned char *packet = NULL;
 	struct pcap_pkthdr *pkt_header;
+	static int warning_shown = 0;
 	int status;
 
 	/* Loop until we get a valid packet, or until we run out of packets */
@@ -63,8 +66,12 @@ unsigned char *next_packet(struct pcap_pkthdr *header)
 
 		memcpy(header, pkt_header, sizeof(*header));
 
-		if(get_validate_fcs() && !check_fcs(packet, header->len))
+		if(get_validate_fcs() && !check_fcs(packet, header->len)) {
+			if(!warning_shown)
+				cprintf(INFO, "[!] Found packet with bad FCS, skipping...\n");
+			warning_shown = 1;
 			continue;
+		}
 
 		break;
 	}
@@ -603,8 +610,10 @@ unsigned char *parse_ie_data(const unsigned char *data, size_t len, uint8_t tag_
 }
 
 /* Validates a packet's reported FCS value */
-int check_fcs(const unsigned char *packet, size_t len)
+static int check_fcs(const unsigned char *packet, size_t len)
 {
+	if(!has_rt_header()) return 1;
+
 	uint32_t offset = 0, match = 0;
 	uint32_t fcs = 0, fcs_calc = 0;
 	struct radio_tap_header *rt_header = NULL;
@@ -613,7 +622,7 @@ int check_fcs(const unsigned char *packet, size_t len)
 	{
 
 		/* FCS is not calculated over the radio tap header */
-		if(has_rt_header() && len >= sizeof(*rt_header))
+		if(len >= sizeof(*rt_header))
 		{
 			uint32_t presentflags, flags;
 			if(!rt_get_presentflags(packet, len, &presentflags, &offset))

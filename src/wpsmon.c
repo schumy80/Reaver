@@ -36,18 +36,21 @@
 #include "utils/vendor.h"
 #include "send.h"
 
+#define MAX_APS 512
+
 extern const char* get_version(void);
 static void wash_usage(char *prog);
 
 int show_all_aps = 0;
 int json_mode = 0;
+int show_utf8_ssid = 0;
 
 static struct mac {
 	unsigned char mac[6];
 	unsigned char vendor_oui[1+3];
 	unsigned char probes;
 	unsigned char flags;
-} seen_list[256];
+} seen_list[MAX_APS];
 enum seen_flags {
 	SEEN_FLAG_PRINTED = 1,
 	SEEN_FLAG_COMPLETE = 2,
@@ -57,15 +60,15 @@ static int list_insert(char *bssid) {
 	unsigned i;
 	unsigned char mac[6];
 	str2mac(bssid, mac);
-	if(seen_count >= 256) return -1;
 	for(i=0; i<seen_count; i++)
 		if(!memcmp(seen_list[i].mac, mac, 6)) return i;
+	if(seen_count >= MAX_APS) return -1;
 	memcpy(seen_list[seen_count].mac, mac, 6);
 	return seen_count++;
 }
 static int was_printed(char* bssid) {
 	int x = list_insert(bssid);
-	if(x >= 0 && x < 256) {
+	if(x >= 0 && x < MAX_APS) {
 		unsigned f = seen_list[x].flags;
 		seen_list[x].flags |= SEEN_FLAG_PRINTED;
 		return f & SEEN_FLAG_PRINTED;
@@ -74,32 +77,33 @@ static int was_printed(char* bssid) {
 }
 static void mark_ap_complete(char *bssid) {
 	int x = list_insert(bssid);
-	if(x >= 0 && x < 256) seen_list[x].flags |= SEEN_FLAG_COMPLETE;
+	if(x >= 0 && x < MAX_APS) seen_list[x].flags |= SEEN_FLAG_COMPLETE;
 }
 static int is_done(char *bssid) {
 	int x = list_insert(bssid);
-	if(x >= 0 && x < 256) return seen_list[x].flags & SEEN_FLAG_COMPLETE;
+	if(x >= 0 && x < MAX_APS) return seen_list[x].flags & SEEN_FLAG_COMPLETE;
 	return 1;
 }
 static int should_probe(char *bssid) {
 	int x = list_insert(bssid);
-        if(x >= 0 && x < 256) return seen_list[x].probes < get_max_num_probes();
+        if(x >= 0 && x < MAX_APS) return seen_list[x].probes < get_max_num_probes();
 	return 0;
 }
 static void update_probe_count(char *bssid) {
 	int x = list_insert(bssid);
-	if(x >= 0 && x < 256) seen_list[x].probes++;
+	if(x >= 0 && x < MAX_APS) seen_list[x].probes++;
 }
 static void set_ap_vendor(char *bssid) {
 	int x = list_insert(bssid);
-	if(x >= 0 && x < 256) memcpy(seen_list[x].vendor_oui, globule->vendor_oui, sizeof(seen_list[x].vendor_oui));
+	if(x >= 0 && x < MAX_APS) memcpy(seen_list[x].vendor_oui, globule->vendor_oui, sizeof(seen_list[x].vendor_oui));
 }
 static unsigned char *get_ap_vendor(char* bssid) {
 	int x = list_insert(bssid);
-	if(x >= 0 && x < 256 && seen_list[x].vendor_oui[0])
+	if(x >= 0 && x < MAX_APS && seen_list[x].vendor_oui[0])
 		return seen_list[x].vendor_oui+1;
 	return 0;
 }
+
 int wash_main(int argc, char *argv[])
 {
 	int c = 0;
@@ -107,35 +111,37 @@ int wash_main(int argc, char *argv[])
 	int long_opt_index = 0, i = 0, channel = 0, passive = 0, mode = 0;
 	int source = INTERFACE, ret_val = EXIT_FAILURE;
 	struct bpf_program bpf = { 0 };
-	char *out_file = NULL, *last_optarg = NULL, *target = NULL, *bssid = NULL;
-	char *short_options = "i:c:n:o:b:5sfuDhaj";
+	char *last_optarg = NULL, *target = NULL, *bssid = NULL;
+	char *short_options = "i:c:n:b:25sfuFDhajU";
         struct option long_options[] = {
 		{ "bssid", required_argument, NULL, 'b' },
                 { "interface", required_argument, NULL, 'i' },
                 { "channel", required_argument, NULL, 'c' },
-		{ "out-file", required_argument, NULL, 'o' },
 		{ "probes", required_argument, NULL, 'n' },
-		{ "daemonize", no_argument, NULL, 'D' },
 		{ "file", no_argument, NULL, 'f' },
+		{ "ignore-fcs", no_argument, NULL, 'F' },
+		{ "2ghz", no_argument, NULL, '2' },
 		{ "5ghz", no_argument, NULL, '5' },
 		{ "scan", no_argument, NULL, 's' },
 		{ "survey", no_argument, NULL, 'u' },
 		{ "all", no_argument, NULL, 'a' },
 		{ "json", no_argument, NULL, 'j' },
+		{ "utf8", no_argument, NULL, 'U' },
                 { "help", no_argument, NULL, 'h' },
                 { 0, 0, 0, 0 }
         };
 
-	fprintf(stderr, "\nWash v%s WiFi Protected Setup Scan Tool\n", get_version());
-        fprintf(stderr, "Copyright (c) 2011, Tactical Network Solutions, Craig Heffner\n\n");
-
 	globule_init();
 	set_auto_channel_select(0);
-	set_wifi_band(BG_BAND);
+	set_wifi_band(0);
 	set_debug(INFO);
 	set_validate_fcs(1);
-	set_log_file(stdout);
+	/* send all warnings, etc to stderr */
+	set_log_file(stderr);
 	set_max_num_probes(DEFAULT_MAX_NUM_PROBES);
+
+	setvbuf(stdout, 0, _IONBF, 0);
+	setvbuf(stderr, 0, _IONBF, 0);
 
 	while((c = getopt_long(argc, argv, short_options, long_options, &long_opt_index)) != -1)
         {
@@ -155,13 +161,13 @@ int wash_main(int argc, char *argv[])
 				set_fixed_channel(1);
 				break;
 			case '5':
-				set_wifi_band(AN_BAND);
+				set_wifi_band(get_wifi_band() | AN_BAND);
+				break;
+			case '2':
+				set_wifi_band(get_wifi_band() | BG_BAND);
 				break;
 			case 'n':
 				set_max_num_probes(atoi(optarg));
-				break;
-			case 'o':
-				out_file = strdup(optarg);
 				break;
 			case 'j':
 				json_mode = 1;
@@ -172,11 +178,14 @@ int wash_main(int argc, char *argv[])
 			case 'u':
 				mode = SURVEY;
 				break;
-			case 'D':
-				daemonize();
+			case 'F':
+				set_validate_fcs(0);
 				break;
 			case 'a':
 				show_all_aps = 1;
+				break;
+			case 'U':
+				show_utf8_ssid = 1;
 				break;
 			default:
 				wash_usage(argv[0]);
@@ -194,6 +203,8 @@ int wash_main(int argc, char *argv[])
 			last_optarg = strdup(optarg);
 		}
 	}
+
+	if(get_wifi_band() == 0) set_wifi_band(BG_BAND);
 
 	/* The interface value won't be set if capture files were specified; else, there should have been an interface specified */
 	if(!get_iface() && source != PCAP_FILE)
@@ -218,19 +229,6 @@ int wash_main(int argc, char *argv[])
 	if(source == PCAP_FILE)
 	{
 		passive = 1;
-	}
-
-	/* Open the output file, if any. If none, write to stdout. */
-	if(out_file)
-	{
-		fp = fopen(out_file, "wb");
-		if(!fp)
-		{
-			cprintf(CRITICAL, "[X] ERROR: Failed to open '%s' for writing\n", out_file);
-			goto end;
-		}
-
-		set_log_file(fp);
 	}
 
 	/* 
@@ -291,7 +289,6 @@ int wash_main(int argc, char *argv[])
 end:
 	globule_deinit();
 	if(bssid) free(bssid);
-	if(out_file) free(out_file);
 	if(wpsmon.fp) fclose(wpsmon.fp);
 	return ret_val;
 }
@@ -335,9 +332,9 @@ void monitor(char *bssid, int passive, int source, int channel, int mode)
 	if(!header_printed)
 	{
 		if(!json_mode) {
-			cprintf  (INFO, "BSSID               Ch  dBm  WPS  Lck  Vendor    ESSID\n");
-			//cprintf(INFO, "00:11:22:33:44:55  104  -77  1.0  Yes  Bloatcom  0123456789abcdef0123456789abcdef\n");
-			cprintf  (INFO, "--------------------------------------------------------------------------------\n");
+			fprintf  (stdout, "BSSID               Ch  dBm  WPS  Lck  Vendor    ESSID\n");
+			//fprintf(stdout, "00:11:22:33:44:55  104  -77  1.0  Yes  Bloatcom  0123456789abcdef0123456789abcdef\n");
+			fprintf  (stdout, "--------------------------------------------------------------------------------\n");
 		}
 		header_printed = 1;
 	}
@@ -439,10 +436,14 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 
 					char* vendor = get_vendor_string(get_ap_vendor(bssid));
 					char* sane_ssid = sanitize_string(ssid);
+
+					if(show_utf8_ssid && verifyssid(ssid))
+						strcpy(sane_ssid,ssid);
+
 					if(wps->version > 0)
-						cprintf(INFO, "%17s  %3d  %.2d  %d.%d  %3s  %8s  %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, vendor ? vendor : "        ", sane_ssid);
+						fprintf(stdout, "%17s  %3d  %.2d  %d.%d  %3s  %8s  %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, vendor ? vendor : "        ", sane_ssid);
 					else
-						cprintf(INFO, "%17s  %3d  %.2d            %8s  %s\n", bssid, channel, rssi, vendor ? vendor : "        ", sane_ssid);
+						fprintf(stdout, "%17s  %3d  %.2d            %8s  %s\n", bssid, channel, rssi, vendor ? vendor : "        ", sane_ssid);
 					free(sane_ssid);
 				}
 
@@ -460,8 +461,8 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 					mark_ap_complete(bssid);
 					if(json_mode && (show_all_aps || wps->version > 0)) {
 						char *json_string = wps_data_to_json(bssid, ssid, channel, rssi, get_ap_vendor(bssid), wps);
-						fprintf(get_log_file(), "%s\n", json_string);
-						fflush(get_log_file());
+						fprintf(stdout, "%s\n", json_string);
+						fflush(stdout);
 						free(json_string);
 					}
 				}
@@ -502,22 +503,30 @@ void sigalrm_handler(int x)
 	next_channel();
 }
 
+static void print_header(void) {
+	fprintf(stderr, "\nWash v%s WiFi Protected Setup Scan Tool\n", get_version());
+        fprintf(stderr, "Copyright (c) 2011, Tactical Network Solutions, Craig Heffner\n\n");
+}
+
 static void wash_usage(char *prog)
 {
+	print_header();
+
 	fprintf(stderr, "Required Arguments:\n");
 	fprintf(stderr, "\t-i, --interface=<iface>              Interface to capture packets on\n");
 	fprintf(stderr, "\t-f, --file [FILE1 FILE2 FILE3 ...]   Read packets from capture files\n");
 
 	fprintf(stderr, "\nOptional Arguments:\n");
 	fprintf(stderr, "\t-c, --channel=<num>                  Channel to listen on [auto]\n");
-	fprintf(stderr, "\t-o, --out-file=<file>                Write data to file\n");
 	fprintf(stderr, "\t-n, --probes=<num>                   Maximum number of probes to send to each AP in scan mode [%d]\n", DEFAULT_MAX_NUM_PROBES);
-	fprintf(stderr, "\t-D, --daemonize                      Daemonize wash\n");
+	fprintf(stderr, "\t-F, --ignore-fcs                     Ignore frame checksum errors\n");
+	fprintf(stderr, "\t-2, --2ghz                           Use 2.4GHz 802.11 channels\n");
 	fprintf(stderr, "\t-5, --5ghz                           Use 5GHz 802.11 channels\n");
 	fprintf(stderr, "\t-s, --scan                           Use scan mode\n");
 	fprintf(stderr, "\t-u, --survey                         Use survey mode [default]\n");
 	fprintf(stderr, "\t-a, --all                            Show all APs, even those without WPS\n");
 	fprintf(stderr, "\t-j, --json                           print extended WPS info as json\n");
+	fprintf(stderr, "\t-U, --utf8                           Show UTF8 ESSID (does not sanitize ESSID, dangerous)\n");
 	fprintf(stderr, "\t-h, --help                           Show help\n");
 	
 	fprintf(stderr, "\nExample:\n");

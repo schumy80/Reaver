@@ -49,7 +49,7 @@ int process_arguments(int argc, char **argv)
 	int long_opt_index = 0;
 	char bssid[MAC_ADDR_LEN] = { 0 };
 	char mac[MAC_ADDR_LEN] = { 0 };
-	char *short_options = "b:e:m:i:t:d:c:T:x:r:g:l:o:p:s:C:KZA5ELfnqvDShwN6J";
+	char *short_options = "b:e:m:i:t:d:c:T:x:r:g:l:p:s:C:KZA5ELfnqvDShwN6JF";
 	struct option long_options[] = {
 		{ "pixie-dust", no_argument, NULL, 'K' },
 		{ "interface", required_argument, NULL, 'i' },
@@ -65,7 +65,6 @@ int process_arguments(int argc, char **argv)
 		{ "session", required_argument, NULL, 's' },
 		{ "recurring-delay", required_argument, NULL, 'r' },
 		{ "max-attempts", required_argument, NULL, 'g' },
-		{ "out-file", required_argument, NULL, 'o' },
 		{ "pin", required_argument, NULL, 'p' },
 		{ "exec", required_argument, NULL, 'C' },
 		{ "no-associate", no_argument, NULL, 'A' },
@@ -74,7 +73,6 @@ int process_arguments(int argc, char **argv)
 		{ "eap-terminate", no_argument, NULL, 'E' },
 		{ "dh-small", no_argument, NULL, 'S' },
 		{ "fixed", no_argument, NULL, 'f' },
-		{ "daemonize", no_argument, NULL, 'D' },
 		{ "5ghz", no_argument, NULL, '5' },
 		{ "repeat-m6", no_argument, NULL, '6' },
 		{ "nack", no_argument, NULL, 'n' },
@@ -83,6 +81,7 @@ int process_arguments(int argc, char **argv)
 		{ "win7", no_argument, NULL, 'w' },
 		{ "help", no_argument, NULL, 'h' },
 		{ "timeout-is-nack", no_argument, NULL, 'J' },
+		{ "ignore-fcs", no_argument, NULL, 'F' },
 		{ 0, 0, 0, 0 }
 	};
 
@@ -148,9 +147,6 @@ int process_arguments(int argc, char **argv)
                         case 'L':
                                 set_ignore_locks(1);
                                 break;
-			case 'o':
-				set_log_file(fopen(optarg, "w"));
-				break;
                         case 'x':
                                 set_fail_delay(atoi(optarg));
                                 break;
@@ -160,9 +156,6 @@ int process_arguments(int argc, char **argv)
                         case 'g':
                                 set_max_pin_attempts(atoi(optarg));
                                 break;
-                        case 'D':
-				daemonize();
-				break;
 			case 'E':
                                 set_eap_terminate(1);
                                 break;
@@ -189,6 +182,9 @@ int process_arguments(int argc, char **argv)
 				break;
 			case 'N':
 				set_oo_send_nack(0);
+				break;
+			case 'F':
+				set_validate_fcs(0);
 				break;
                         default:
                                 ret_val = EXIT_FAILURE;
