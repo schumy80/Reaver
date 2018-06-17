@@ -2,9 +2,10 @@
 
 # Uncomment this to turn on verbose mode.
 #export DH_VERBOSE=1
+export DEB_BUILD_MAINT_OPTIONS = hardening=+all
 
 %:
-	dh $@ --sourcedirectory=src
+	dh $@ --sourcedirectory=src --no-parallel
 
-override_dh_auto_install:
+#override_dh_auto_install:
 

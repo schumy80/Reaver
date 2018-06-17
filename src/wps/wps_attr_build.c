@@ -20,7 +20,8 @@
 #include "crypto/dh_group5.h"
 #include "crypto/sha256.h"
 #include "wps_i.h"
-
+#include "pixie.h"
+#include "globule.h"
 
 int wps_build_public_key(struct wps_data *wps, struct wpabuf *msg)
 {
@@ -51,6 +52,9 @@ int wps_build_public_key(struct wps_data *wps, struct wpabuf *msg)
 		return -1;
 	}
 
+	wpa_hexdump_buf_key(MSG_DEBUG, "WPS: DH Private Key", wps->dh_privkey); 
+	wpa_hexdump_buf(MSG_DEBUG, "WPS: DH own Public Key", pubkey);
+
 	wpabuf_put_be16(msg, ATTR_PUBLIC_KEY);
 	wpabuf_put_be16(msg, wpabuf_len(pubkey));
 	wpabuf_put_buf(msg, pubkey);
@@ -58,6 +62,11 @@ int wps_build_public_key(struct wps_data *wps, struct wpabuf *msg)
 	if (wps->registrar) {
 		wpabuf_free(wps->dh_pubkey_r);
 		wps->dh_pubkey_r = pubkey;
+		if(pixie.do_pixie) {
+			char buf[1024];
+			pixie_format(wpabuf_mhead_u8(pubkey), 192, buf);
+			PIXIE_SET(pkr, buf);
+		}
 	} else {
 		wpabuf_free(wps->dh_pubkey_e);
 		wps->dh_pubkey_e = pubkey;

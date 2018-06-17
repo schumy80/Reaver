@@ -45,7 +45,7 @@ int send_eapol_start()
 	if(packet)
 	{
 		cprintf(VERBOSE, "[+] Sending EAPOL START request\n");
-		ret_val = send_packet(packet, packet_len);
+		ret_val = send_packet(packet, packet_len, 1);
 		free((void *) packet);
 	}
 
@@ -78,7 +78,7 @@ int send_identity_response()
 	if(packet)
 	{
 		cprintf(VERBOSE, "[+] Sending identity response\n");
-		ret_val = send_packet(packet, packet_len);
+		ret_val = send_packet(packet, packet_len, 1);
 		free((void *) packet);
 	}
 
@@ -113,7 +113,7 @@ int send_msg(int type)
                 packet = build_eap_packet(payload, payload_len, &packet_len);
 		if(packet)
 		{
-			if(send_packet(packet, packet_len))
+			if(send_packet(packet, packet_len, 1))
 			{
 				ret_val = 1;
 			} else {
@@ -139,7 +139,7 @@ void send_termination()
 	data = build_eap_failure_packet(&data_size);
 	if(data)
 	{
-		send_packet(data, data_size);
+		send_packet(data, data_size, 1);
 		free((void*) data);
 	}
 }
@@ -153,20 +153,46 @@ void send_wsc_nack()
 	send_msg(SEND_WSC_NACK);
 }
 
+/* store last packet */
+static size_t last_len;
+static unsigned char last_packet[4096];
+
+int resend_last_packet(void) {
+	return send_packet(last_packet, last_len, 0);
+}
+
 /* 
  * All transmissions are handled here to ensure that the receive timer 
  * is always started immediately after a packet is transmitted.
  */
-int send_packet(const void *packet, size_t len)
-{
+static int send_packet_real(const void *packet, size_t len, int use_timer) {
 	int ret_val = 0;
 
 	if(pcap_inject(get_handle(), packet, len) == len)
 	{
 		ret_val = 1;
 	}
-		
-	start_timer();
+
+	if (use_timer) {
+		if(len < sizeof last_packet) {
+			memcpy(last_packet, packet, len);
+			last_len = len;
+		}
+		start_timer();
+	}
 
 	return ret_val;
+
+}
+
+int send_packet_internal(const char* callerfunc, const char* file, int callerline,
+		const void *packet, size_t len, int use_timer)
+{
+	cprintf(DEBUG, "send_packet called from %s() %s:%d\n", callerfunc, file, callerline);
+	int i, ret;
+	#define CNT 1
+	for(i=0;i<CNT;i++) {
+		ret = send_packet_real(packet, len, i==CNT-1 ? use_timer : 0);
+	}
+	return ret;
 }

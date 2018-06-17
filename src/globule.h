@@ -52,6 +52,8 @@ struct globals
 	
 	char *static_p2;		/* Static P2, as supplied by the user */
 
+	int use_pin_string;		/* Use arbitrary string pin */
+
         enum key_state key_status;      /* Indicates the status of the key cracking: KEY1_WIP | KEY2_WIP | KEY_DONE */
 
 	int dh_small;			/* Use small DH keys to improve WPS speed */
@@ -86,6 +88,8 @@ struct globals
 
         int out_of_time;                /* Set to 1 when sigalrm sounds */
 
+	unsigned long long resend_timeout_usec;   /* how many microsecs to wait before resending last packet */
+
         enum debug_level debug;         /* Current debug level: INFO | CRITICAL | WARNING | VERBOSE */
 
         int eapol_start_count;          /* Tracks how many times in a row we've attempted to start and EAP session */
@@ -94,11 +98,11 @@ struct globals
 
 	int auto_channel_select;	/* Diables automatic parsing and changing of the current channel number, as specified in the AP's beacon packet */
 
-	int auto_detect_options;	/* If true, Reaver will auto detect the best command line options for the attack */
-
 	int wifi_band;			/* Determines if we use the A/N bands or B/G bands */
 
 	int channel;			/* Holds the current channel number */
+
+	int repeat_m6;			/* Repeat M6 upon receipt of out-of-order M5s */
 
 	int max_num_probes;		/* Maximum number of probe requests to send to an AP during survey mode */
 	
@@ -114,9 +118,19 @@ struct globals
 
         unsigned char mac[MAC_ADDR_LEN];                /* Source MAC address */
 
+	unsigned char vendor_oui[1+3];	/* the first byte contains 1 if set, 0 if not, the next 3 bytes the actual vendor OUI */
+
+	unsigned char *htcaps;		/* Wireless N HT capabilities of the AP */
+
+	int htcaps_len;			/* lenght of the Wireless N HT capabilities of the AP */
+
 	unsigned char *ap_rates;	/* Supported rates IE data, as reported by the AP */
 
 	int ap_rates_len;		/* Length of the supported rates IE data */
+
+	unsigned char *ap_ext_rates;	/* Supported ext rates IE data, as reported by the AP */
+
+	int ap_ext_rates_len;		/* Length of the supported ext rates IE data */
 
 	FILE *fp;			/* Handle to log file */
 
@@ -138,7 +152,9 @@ struct globals
 					 * wpa_supplicant's wps_data structure, needed for almost all wpa_supplicant
                                          * function calls.
                                          */
-} *globule;
+};
+
+extern struct globals *globule;
 
 int globule_init();
 void globule_deinit();
@@ -194,8 +210,6 @@ void set_fixed_channel(int value);
 int get_fixed_channel();
 void set_auto_channel_select(int value);
 int get_auto_channel_select();
-void set_auto_detect_options(int value);
-int get_auto_detect_options();
 void set_wifi_band(int value);
 int get_wifi_band();
 void set_opcode(enum wsc_op_code value);
@@ -220,6 +234,8 @@ void set_static_p1(char *value);
 char *get_static_p1(void);
 void set_static_p2(char *value);
 char *get_static_p2(void);
+void set_pin_string_mode(int value);
+int get_pin_string_mode(void);
 void set_win7_compat(int value);
 int get_win7_compat(void);
 void set_dh_small(int value);
@@ -234,9 +250,16 @@ void set_wps(struct wps_data *value);
 struct wps_data *get_wps();
 void set_ap_rates(unsigned char *value, int len);
 unsigned char *get_ap_rates(int *len);
+void set_ap_ext_rates(unsigned char *value, int len);
+unsigned char *get_ap_ext_rates(int *len);
+void set_ap_htcaps(unsigned char *value, int len);
+unsigned char *get_ap_htcaps(int *len);
 void set_exec_string(char *string);
 char *get_exec_string(void);
 void set_oo_send_nack(int value);
 int get_oo_send_nack(void);
-
+void set_vendor(int, const unsigned char*);
+unsigned char *get_vendor(void);
+void set_repeat_m6(int);
+int get_repeat_m6(void);
 #endif

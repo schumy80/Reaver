@@ -413,11 +413,15 @@ void perror(const char *s);
  * (http://kernel.org/pub/linux/kernel/people/josh/sparse/)
  */
 #ifdef __CHECKER__
-#define __force __attribute__((force))
-#define __bitwise __attribute__((bitwise))
+# define __force __attribute__((force))
+# define __bitwise __attribute__((bitwise))
 #else
-#define __force
-#define __bitwise
+# ifndef __force
+#  define __force
+# endif
+# ifndef __bitwise
+#  define __bitwise
+# endif
 #endif
 
 typedef u16 __bitwise be16;
@@ -443,6 +447,8 @@ void wpa_get_ntp_timestamp(u8 *buf);
 int wpa_snprintf_hex(char *buf, size_t buf_size, const u8 *data, size_t len);
 int wpa_snprintf_hex_uppercase(char *buf, size_t buf_size, const u8 *data,
 			       size_t len);
+char* sanitize_string(const char *s);
+int verifyssid(const unsigned char *s);
 
 #ifdef CONFIG_NATIVE_WINDOWS
 void wpa_unicode2ascii_inplace(TCHAR *str);

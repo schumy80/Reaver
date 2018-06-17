@@ -12,6 +12,172 @@
 #define LIBWPS_C
 
 #include "libwps.h"
+#include "../utils/common.h"
+#include "../cprintf.h"
+#include <assert.h>
+
+static char* append(char* s1, char *s2) {
+	char buf[512];
+	int l = snprintf(buf, sizeof buf, "%s%s", s1, s2);
+	if (l <= 0) return 0;
+	if (l >= sizeof(buf)) {
+		char *new = malloc(l + 1);
+		if(!new) return 0;
+		int m = snprintf(new, l + 1, "%s%s", s1, s2);
+		assert(m == l);
+		return new;
+	}
+	return strdup(buf);
+}
+
+static char* append_and_free(char* s1, char *s2, int who) {
+	char *new = append(s1, s2);
+	if(who & 1) free(s1);
+	if(who & 2) free(s2);
+	return new;
+}
+
+char *wps_data_to_json(const char*bssid, const char *ssid, int channel, int rssi, const unsigned char* vendor, struct libwps_data *wps) {
+	size_t ol = 0, nl = 0, ns = 0;
+	char *json_str = 0, *old = strdup("{"), *tmp;
+	char buf[1024];
+
+	nl = snprintf(buf, sizeof buf, "\"bssid\" : \"%s\", ", bssid);
+	json_str = append_and_free(old, buf, 1);
+	old = json_str;
+
+	tmp = sanitize_string(ssid);
+	nl = snprintf(buf, sizeof buf, "\"essid\" : \"%s\", ", tmp);
+	free(tmp);
+	json_str = append_and_free(old, buf, 1);
+	old = json_str;
+
+	nl = snprintf(buf, sizeof buf, "\"channel\" : %d, ", channel);
+	json_str = append_and_free(old, buf, 1);
+	old = json_str;
+
+	nl = snprintf(buf, sizeof buf, "\"rssi\" : %d, ", rssi);
+	json_str = append_and_free(old, buf, 1);
+	old = json_str;
+
+	if(vendor) {
+		nl = snprintf(buf, sizeof buf, "\"vendor_oui\" : \"%02X%02X%02X\", ", vendor[0], vendor[1], vendor[2]);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+
+	if(wps->version) {
+		nl = snprintf(buf, sizeof buf, "\"wps_version\" : %d, ", wps->version);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(wps->state) {
+		nl = snprintf(buf, sizeof buf, "\"wps_state\" : %d, ", wps->state);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(wps->locked) {
+		nl = snprintf(buf, sizeof buf, "\"wps_locked\" : %d, ", wps->locked);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->manufacturer) {
+		tmp = sanitize_string(wps->manufacturer);
+		nl = snprintf(buf, sizeof buf, "\"wps_manufacturer\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->model_name) {
+		tmp = sanitize_string(wps->model_name);
+		nl = snprintf(buf, sizeof buf, "\"wps_model_name\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->model_number) {
+		tmp = sanitize_string(wps->model_number);
+		nl = snprintf(buf, sizeof buf, "\"wps_model_number\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->device_name) {
+		tmp = sanitize_string(wps->device_name);
+		nl = snprintf(buf, sizeof buf, "\"wps_device_name\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->ssid) {
+		tmp = sanitize_string(wps->ssid);
+		nl = snprintf(buf, sizeof buf, "\"wps_ssid\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->serial) {
+		tmp = sanitize_string(wps->serial);
+		nl = snprintf(buf, sizeof buf, "\"wps_serial\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->os_version) {
+		tmp = sanitize_string(wps->os_version);
+		nl = snprintf(buf, sizeof buf, "\"wps_os_version\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->uuid) {
+		tmp = sanitize_string(wps->uuid);
+		nl = snprintf(buf, sizeof buf, "\"wps_uuid\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->selected_registrar) {
+		tmp = sanitize_string(wps->selected_registrar);
+		nl = snprintf(buf, sizeof buf, "\"wps_selected_registrar\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->response_type) {
+		tmp = sanitize_string(wps->response_type);
+		nl = snprintf(buf, sizeof buf, "\"wps_response_type\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->primary_device_type) {
+		tmp = sanitize_string(wps->primary_device_type);
+		nl = snprintf(buf, sizeof buf, "\"wps_primary_device_type\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->config_methods) {
+		tmp = sanitize_string(wps->config_methods);
+		nl = snprintf(buf, sizeof buf, "\"wps_config_methods\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+	if(*wps->rf_bands) {
+		tmp = sanitize_string(wps->rf_bands);
+		nl = snprintf(buf, sizeof buf, "\"wps_rf_bands\" : \"%s\", ", tmp);
+		free(tmp);
+		json_str = append_and_free(old, buf, 1);
+		old = json_str;
+	}
+
+	nl = snprintf(buf, sizeof buf, "\"dummy\": 0}");
+	json_str = append_and_free(old, buf, 1);
+
+	return json_str;
+}
 
 /*
  * This is the only function that external code should call. 
@@ -41,10 +207,14 @@ int parse_wps_parameters(const u_char *packet, size_t len, struct libwps_data *w
 			rt_header = (struct radio_tap_header *) libwps_radio_header(packet, len);
 
 			offset = rt_header->len + sizeof(struct dot11_frame_header) + sizeof(struct management_frame);
+			if(offset > len) {
+				cprintf(CRITICAL, "corrupt data received, terminating!\n");
+				exit(1);
+			}
 			data = (packet + offset);
 			data_len = (len - offset);
 
-			ret_val = parse_wps_tag(data, len, wps);
+			ret_val = parse_wps_tag(data, data_len, wps);
 		}
 	}
 
@@ -74,7 +244,8 @@ int parse_wps_tag(const u_char *tags, size_t len, struct libwps_data *wps)
 			PRIMARY_DEVICE_TYPE,
 			CONFIG_METHODS,
 			RF_BANDS,
-			OS_VERSION
+			OS_VERSION,
+			VENDOR_EXTENSION
 	};
 
 	/* Get the WPS IE data blob */
@@ -83,7 +254,7 @@ int parse_wps_tag(const u_char *tags, size_t len, struct libwps_data *wps)
 
 	if(wps_ie_data)
 	{
-		for(i=0; i<sizeof(elements); i++)
+		for(i=0; i<sizeof(elements)/sizeof(elements[0]); i++)
 		{
 			/* Search for each WPS element inside the WPS IE data blob */
 			el = get_wps_data_element(wps_ie_data, wps_data_len, elements[i], &el_len);
@@ -125,7 +296,6 @@ int parse_wps_tag(const u_char *tags, size_t len, struct libwps_data *wps)
 						ptr = wps->uuid;
 						break;
 					case SERIAL:
-						src = hex2str(el, el_len);
 						ptr = wps->serial;
 						break;
 					case SELECTED_REGISTRAR:
@@ -149,8 +319,23 @@ int parse_wps_tag(const u_char *tags, size_t len, struct libwps_data *wps)
 						ptr = wps->rf_bands;
 						break;
 					case OS_VERSION:
-						src = hex2str(el, el_len);
 						ptr = wps->os_version;
+						break;
+					case VENDOR_EXTENSION:
+						if (memcmp(&el[0], WFA_EXTENSION_ID, 3) == 0)
+						{
+							unsigned char *pwfa = &el[3]; /* WFA subelement ID */
+							while(el_len > 0) /* Cycle through all WFA subelements */
+							{
+								if (*pwfa == WPS_VERSION2_ID)
+								{
+									wps->version = (uint8_t) pwfa[2];
+									break;
+								}
+								el_len -= pwfa[1] + 2;
+								pwfa += pwfa[1] + 2;
+							}
+						}
 						break;
 					default:
 						src = NULL;
@@ -304,24 +489,13 @@ const u_char *libwps_radio_header(const u_char *packet, size_t len)
 /* Convert raw data to a hex string */
 char *hex2str(unsigned char *hex, int len)
 {
-	char *str = NULL;
-	int str_len = 0, i = 0;
-	char tmp_str[3] = { 0 };
-
-	str_len = (len * 2);
-	
-	str = malloc(str_len+1);
-	if(str)
-	{
-		memset(str, 0, (str_len+1));
-
-		for(i=0; i<len; i++)
-		{
-			memset((char *) &tmp_str, 0, sizeof(tmp_str));
-			snprintf((char *) &tmp_str, sizeof(tmp_str), "%.2X", hex[i]);
-			strncat(str, (char *) &tmp_str, 2);
-		}
+	static const char atab[] = "0123456789abcdef";
+	char *str = malloc((len*2)+1), *out=str;
+	if(!str) return 0;
+	for(;len;hex++,len--) {
+		*(out++) = atab[*hex >> 4];
+		*(out++) = atab[*hex & 0xf];
 	}
-
+	*out = 0;
 	return str;
 }

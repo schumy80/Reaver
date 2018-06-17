@@ -51,17 +51,17 @@ enum wps_result do_wps_exchange()
 	/* Initiate an EAP session */
 	send_eapol_start();
 
-	/* 
+	/*
 	 * Loop until:
 	 *
-	 * 	o The pin has been cracked
-	 * 	o An EAP_FAIL packet is received
-	 * 	o We receive a NACK message
+	 *	o The pin has been cracked
+	 *	o An EAP_FAIL packet is received
+	 *	o We receive a NACK message
 	 *	o We hit an unrecoverable receive timeout
 	 */
-	while((get_key_status() != KEY_DONE) && 
+	while((get_key_status() != KEY_DONE) &&
 	      !terminated &&
-	      !got_nack && 
+	      !got_nack &&
               !premature_timeout)
 	{
 		tx_type = 0;
@@ -73,13 +73,11 @@ enum wps_result do_wps_exchange()
 
 		packet = next_packet(&header);
 		if(packet == NULL)
-		{	
 			break;
-		}
 
 		packet_type = process_packet(packet, &header);
 		memset((void *) packet, 0, header.len);
-	
+		if(packet_type != UNKNOWN)
 		switch(packet_type)
 		{
 			case IDENTITY_REQUEST:
@@ -121,9 +119,13 @@ enum wps_result do_wps_exchange()
 				}
 				if(m4_sent && !m6_sent)
 				{
-                                	tx_type = SEND_M6;
+					tx_type = SEND_M6;
+					m6_sent = 1;
+				} else if(m6_sent && get_repeat_m6()) {
+					tx_type = SEND_M6;
 					m6_sent = 1;
 				}
+
 				else if(get_oo_send_nack())
 				{
 					tx_type = SEND_WSC_NACK;
@@ -134,7 +136,7 @@ enum wps_result do_wps_exchange()
 				cprintf(VERBOSE, "[+] Received M7 message\n");
 				/* Fall through */
 			case DONE:
-				if(get_key_status() == KEY2_WIP) 
+				if(get_key_status() == KEY2_WIP)
 				{
 					set_key_status(KEY_DONE);
 				}
@@ -148,11 +150,8 @@ enum wps_result do_wps_exchange()
 				terminated = 1;
 				break;
 			default:
-				if(packet_type != 0)
-				{
-					cprintf(VERBOSE, "[!] WARNING: Unexpected packet received (0x%.02X), terminating transaction\n", packet_type);
-					terminated = 1;
-				}
+				cprintf(VERBOSE, "[!] WARNING: Unexpected packet received (0x%.02X), terminating transaction\n", packet_type);
+				terminated = 1;
 				break;
 		}
 
@@ -164,7 +163,7 @@ enum wps_result do_wps_exchange()
 		{
 			send_msg(tx_type);
 		}
-		/* 
+		/*
 		 * If get_oo_send_nack is 0, then when out of order packets come, we don't
 		 * NACK them. However, this also means that we wait infinitely for the expected
 		 * packet, since the timer is started by send_msg. Manually start the timer to
@@ -197,7 +196,7 @@ enum wps_result do_wps_exchange()
 				premature_timeout = 1;
 			}
 		}
-	} 
+	}
 
 	/*
 	 * There are four states that can signify a pin failure:
@@ -218,7 +217,7 @@ enum wps_result do_wps_exchange()
 		{
 			/* The AP is properly sending WSC_NACKs, so don't treat future timeouts as pin failures. */
 			set_timeout_is_nack(0);
-			
+
 			ret_val = KEY_REJECTED;
 		}
 		else
@@ -228,7 +227,7 @@ enum wps_result do_wps_exchange()
 	}
 	else if(premature_timeout)
 	{
-		/* 
+		/*
 		 * Some WPS implementations simply drop the connection on the floor instead of sending a NACK.
 		 * We need to be able to handle this, but at the same time using a timeout on the M5/M7 messages
 		 * can result in false negatives. Thus, treating M5/M7 receive timeouts as NACKs can be disabled.
@@ -258,23 +257,40 @@ enum wps_result do_wps_exchange()
 		ret_val = UNKNOWN_ERROR;
 	}
 
-	/* 
+	/*
 	 * Always completely terminate the WPS session, else some WPS state machines may
 	 * get stuck in their current state and won't accept new WPS registrar requests
 	 * until rebooted.
- 	 *
+	 *
 	 * Stop the receive timer that is started by the termination transmission.
 	 */
 	send_wsc_nack();
 	stop_timer();
-	
+
 	if(get_eap_terminate() || ret_val == EAP_FAIL)
 	{
 		send_termination();
 		stop_timer();
 	}
-	
+
 	return ret_val;
+}
+
+static int is_data_packet(struct dot11_frame_header *frame_header)
+{
+	int fctype = frame_header->fc & end_htole16(IEEE80211_FCTL_FTYPE | IEEE80211_FCTL_STYPE);
+	if (fctype == end_htole16(IEEE80211_FTYPE_DATA | IEEE80211_STYPE_DATA))
+		return 1;
+	if (fctype == end_htole16(IEEE80211_FTYPE_DATA | IEEE80211_STYPE_QOS_DATA))
+		return 2;
+	return 0;
+}
+
+static int is_packet_for_us(struct dot11_frame_header *frame_header)
+{
+	return (
+		(memcmp(frame_header->addr1, get_mac(), MAC_ADDR_LEN) == 0)
+		);
 }
 
 /* 
@@ -292,7 +308,6 @@ enum wps_type process_packet(const u_char *packet, struct pcap_pkthdr *header)
 	struct wfa_expanded_header *wfa = NULL;
 	const void *wps_msg = NULL;
 	size_t wps_msg_len = 0;
-	enum wps_type type = UNKNOWN;
 	struct wps_data *wps = NULL;
 
 	if(packet == NULL || header == NULL)
@@ -306,107 +321,95 @@ enum wps_type process_packet(const u_char *packet, struct pcap_pkthdr *header)
 
 	/* Cast the radio tap and 802.11 frame headers and parse out the Frame Control field */
 	rt_header = (struct radio_tap_header *) packet;
-	frame_header = (struct dot11_frame_header *) (packet+rt_header->len);
+	size_t offset = end_le16toh(rt_header->len);
+	frame_header = (struct dot11_frame_header *) (packet+offset);
+	offset += sizeof(struct dot11_frame_header);
 
 	/* Does the BSSID/source address match our target BSSID? */
-	if(memcmp(frame_header->addr3, get_bssid(), MAC_ADDR_LEN) == 0)
+	if(memcmp(frame_header->addr3, get_bssid(), MAC_ADDR_LEN) != 0)
+		return UNKNOWN;
+
+	/* Is this a packet sent to our MAC address? */
+	if(!is_packet_for_us(frame_header))
+		return UNKNOWN;
+
+	int data_pkt_type;
+
+	/* Is this a data packet ? */
+	if(!(data_pkt_type = is_data_packet(frame_header)))
+		return UNKNOWN;
+
+	if(data_pkt_type == 2) /* QOS */
+		offset += 2;
+
+	llc = (struct llc_header *) (packet + offset);
+	offset += sizeof(struct llc_header);
+
+	/* All packets in our exchanges will be 802.1x */
+	if(llc->type != end_htobe16(DOT1X_AUTHENTICATION))
+		return UNKNOWN;
+
+
+	dot1x = (struct dot1X_header *) (packet + offset);
+	offset += sizeof(struct dot1X_header);
+
+	/* All packets in our exchanges will be EAP packets */
+	if(!(dot1x->type == DOT1X_EAP_PACKET && (header->len >= EAP_PACKET_SIZE)))
+		return UNKNOWN;
+
+
+	eap = (struct eap_header *) (packet + offset);
+	offset += sizeof(struct eap_header);
+
+	/* EAP session termination. Break and move on. */
+	if(eap->code == EAP_FAILURE)
+		return TERMINATE;
+
+	/* If we've received an EAP request and then this should be a WPS message */
+	if(eap->code != EAP_REQUEST)
+		return UNKNOWN;
+
+	/* The EAP header builder needs this ID value */
+	set_eap_id(eap->id);
+
+	/* Stop the receive timer that was started by the last send_packet() */
+	stop_timer();
+
+	/* Check to see if we received an EAP identity request */
+	if(eap->type == EAP_IDENTITY)
 	{
-		/* Is this a data packet sent to our MAC address? */
-		if(frame_header->fc.type == DATA_FRAME && 
-			frame_header->fc.sub_type == SUBTYPE_DATA && 
-			(memcmp(frame_header->addr1, get_mac(), MAC_ADDR_LEN) == 0)) 
-		{
-			llc = (struct llc_header *) (packet +
-							rt_header->len +
-							sizeof(struct dot11_frame_header)
-			);
+		/* We've initiated an EAP session, so reset the counter */
+		set_eapol_start_count(0);
 
-			/* All packets in our exchanges will be 802.1x */
-			if(llc->type == DOT1X_AUTHENTICATION)
-			{
-				dot1x = (struct dot1X_header *) (packet +
-								rt_header->len +
-								sizeof(struct dot11_frame_header) +
-								sizeof(struct llc_header)
-				);
-
-				/* All packets in our exchanges will be EAP packets */
-				if(dot1x->type == DOT1X_EAP_PACKET && (header->len >= EAP_PACKET_SIZE))
-				{
-					eap = (struct eap_header *) (packet +
-									rt_header->len +
-									sizeof(struct dot11_frame_header) +
-									sizeof(struct llc_header) +
-									sizeof(struct dot1X_header)
-					);
-
-					/* EAP session termination. Break and move on. */
-					if(eap->code == EAP_FAILURE)
-					{
-						type = TERMINATE;
-					} 
-					/* If we've received an EAP request and then this should be a WPS message */
-					else if(eap->code == EAP_REQUEST)
-					{
-						/* The EAP header builder needs this ID value */
-						set_eap_id(eap->id);
-
-						/* Stop the receive timer that was started by the last send_packet() */
-						stop_timer();
-
-						/* Check to see if we received an EAP identity request */
-						if(eap->type == EAP_IDENTITY)
-						{
-							/* We've initiated an EAP session, so reset the counter */
-							set_eapol_start_count(0);
-
-							type = IDENTITY_REQUEST;
-						} 
-						/* An expanded EAP type indicates a probable WPS message */
-						else if((eap->type == EAP_EXPANDED) && (header->len > WFA_PACKET_SIZE))
-						{
-							wfa = (struct wfa_expanded_header *) (packet +
-											rt_header->len +
-											sizeof(struct dot11_frame_header) +
-											sizeof(struct llc_header) +
-											sizeof(struct dot1X_header) +
-											sizeof(struct eap_header)
-							);
-						
-							/* Verify that this is a WPS message */
-							if(wfa->type == SIMPLE_CONFIG)
-							{
-								wps_msg_len = 	(size_t) ntohs(eap->len) - 
-										sizeof(struct eap_header) - 
-										sizeof(struct wfa_expanded_header);
-
-								wps_msg = (const void *) (packet +
-											rt_header->len +
-                                                                       	                sizeof(struct dot11_frame_header) +
-                                                                               	        sizeof(struct llc_header) +
-                                                                                       	sizeof(struct dot1X_header) +
-                                                       	             	                sizeof(struct eap_header) +
-											sizeof(struct wfa_expanded_header)
-								);
-
-								/* Save the current WPS state. This way if we get a NACK message, we can 
-								 * determine what state we were in when the NACK arrived.
-								 */
-								wps = get_wps();
-								set_last_wps_state(wps->state);
-								set_opcode(wfa->opcode);
-
-								/* Process the WPS message and send a response */
-								type = process_wps_message(wps_msg, wps_msg_len);
-							}
-						}
-					}
-				}
-			}	
-		}
+		return IDENTITY_REQUEST;
 	}
 
-	return type;
+	/* An expanded EAP type indicates a probable WPS message */
+	if(!((eap->type == EAP_EXPANDED) && (header->len > WFA_PACKET_SIZE)))
+		return UNKNOWN;
+
+	wfa = (struct wfa_expanded_header *) (packet + offset);
+	offset += sizeof(struct wfa_expanded_header);
+
+	/* Verify that this is a WPS message */
+	if(wfa->type != end_htobe32(SIMPLE_CONFIG))
+		return UNKNOWN;
+
+	wps_msg_len = (size_t) ntohs(eap->len) -
+			sizeof(struct eap_header) -
+			sizeof(struct wfa_expanded_header);
+
+	wps_msg = (const void *) (packet + offset);
+
+	/* Save the current WPS state. This way if we get a NACK message, we can 
+	 * determine what state we were in when the NACK arrived.
+	 */
+	wps = get_wps();
+	set_last_wps_state(wps->state);
+	set_opcode(wfa->opcode);
+
+	/* Process the WPS message and send a response */
+	return process_wps_message(wps_msg, wps_msg_len);
 }
 
 /* Processes a received WPS message and returns the message type */

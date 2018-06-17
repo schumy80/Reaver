@@ -32,44 +32,116 @@
  */
 
 #include "wpsmon.h"
+#include "utils/file.h"
+#include "utils/vendor.h"
+#include "send.h"
 
-int main(int argc, char *argv[])
+#define MAX_APS 512
+
+extern const char* get_version(void);
+static void wash_usage(char *prog);
+
+int show_all_aps = 0;
+int json_mode = 0;
+int show_utf8_ssid = 0;
+
+static struct mac {
+	unsigned char mac[6];
+	unsigned char vendor_oui[1+3];
+	unsigned char probes;
+	unsigned char flags;
+} seen_list[MAX_APS];
+enum seen_flags {
+	SEEN_FLAG_PRINTED = 1,
+	SEEN_FLAG_COMPLETE = 2,
+};
+static unsigned seen_count;
+static int list_insert(char *bssid) {
+	unsigned i;
+	unsigned char mac[6];
+	str2mac(bssid, mac);
+	for(i=0; i<seen_count; i++)
+		if(!memcmp(seen_list[i].mac, mac, 6)) return i;
+	if(seen_count >= MAX_APS) return -1;
+	memcpy(seen_list[seen_count].mac, mac, 6);
+	return seen_count++;
+}
+static int was_printed(char* bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < MAX_APS) {
+		unsigned f = seen_list[x].flags;
+		seen_list[x].flags |= SEEN_FLAG_PRINTED;
+		return f & SEEN_FLAG_PRINTED;
+	}
+	return 1;
+}
+static void mark_ap_complete(char *bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < MAX_APS) seen_list[x].flags |= SEEN_FLAG_COMPLETE;
+}
+static int is_done(char *bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < MAX_APS) return seen_list[x].flags & SEEN_FLAG_COMPLETE;
+	return 1;
+}
+static int should_probe(char *bssid) {
+	int x = list_insert(bssid);
+        if(x >= 0 && x < MAX_APS) return seen_list[x].probes < get_max_num_probes();
+	return 0;
+}
+static void update_probe_count(char *bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < MAX_APS) seen_list[x].probes++;
+}
+static void set_ap_vendor(char *bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < MAX_APS) memcpy(seen_list[x].vendor_oui, globule->vendor_oui, sizeof(seen_list[x].vendor_oui));
+}
+static unsigned char *get_ap_vendor(char* bssid) {
+	int x = list_insert(bssid);
+	if(x >= 0 && x < MAX_APS && seen_list[x].vendor_oui[0])
+		return seen_list[x].vendor_oui+1;
+	return 0;
+}
+
+int wash_main(int argc, char *argv[])
 {
 	int c = 0;
 	FILE *fp = NULL;
 	int long_opt_index = 0, i = 0, channel = 0, passive = 0, mode = 0;
 	int source = INTERFACE, ret_val = EXIT_FAILURE;
 	struct bpf_program bpf = { 0 };
-	char *out_file = NULL, *last_optarg = NULL, *target = NULL, *bssid = NULL;
-	char *short_options = "i:c:n:o:b:5sfuCDh";
+	char *last_optarg = NULL, *target = NULL, *bssid = NULL;
+	char *short_options = "i:c:n:b:25sfuFDhajU";
         struct option long_options[] = {
 		{ "bssid", required_argument, NULL, 'b' },
                 { "interface", required_argument, NULL, 'i' },
                 { "channel", required_argument, NULL, 'c' },
-		{ "out-file", required_argument, NULL, 'o' },
 		{ "probes", required_argument, NULL, 'n' },
-		{ "daemonize", no_argument, NULL, 'D' },
 		{ "file", no_argument, NULL, 'f' },
-		{ "ignore-fcs", no_argument, NULL, 'C' },
+		{ "ignore-fcs", no_argument, NULL, 'F' },
+		{ "2ghz", no_argument, NULL, '2' },
 		{ "5ghz", no_argument, NULL, '5' },
 		{ "scan", no_argument, NULL, 's' },
 		{ "survey", no_argument, NULL, 'u' },
+		{ "all", no_argument, NULL, 'a' },
+		{ "json", no_argument, NULL, 'j' },
+		{ "utf8", no_argument, NULL, 'U' },
                 { "help", no_argument, NULL, 'h' },
                 { 0, 0, 0, 0 }
         };
 
-	fprintf(stderr, "\nWash v%s WiFi Protected Setup Scan Tool\n", PACKAGE_VERSION);
-        fprintf(stderr, "Copyright (c) 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>\n\n");
-
 	globule_init();
-	sql_init();
-	create_ap_table();
 	set_auto_channel_select(0);
-	set_wifi_band(BG_BAND);
+	set_wifi_band(0);
 	set_debug(INFO);
 	set_validate_fcs(1);
-	set_log_file(stdout);
+	/* send all warnings, etc to stderr */
+	set_log_file(stderr);
 	set_max_num_probes(DEFAULT_MAX_NUM_PROBES);
+
+	setvbuf(stdout, 0, _IONBF, 0);
+	setvbuf(stderr, 0, _IONBF, 0);
 
 	while((c = getopt_long(argc, argv, short_options, long_options, &long_opt_index)) != -1)
         {
@@ -89,13 +161,16 @@ int main(int argc, char *argv[])
 				set_fixed_channel(1);
 				break;
 			case '5':
-				set_wifi_band(AN_BAND);
+				set_wifi_band(get_wifi_band() | AN_BAND);
+				break;
+			case '2':
+				set_wifi_band(get_wifi_band() | BG_BAND);
 				break;
 			case 'n':
 				set_max_num_probes(atoi(optarg));
 				break;
-			case 'o':
-				out_file = strdup(optarg);
+			case 'j':
+				json_mode = 1;
 				break;
 			case 's':
 				mode = SCAN;
@@ -103,14 +178,17 @@ int main(int argc, char *argv[])
 			case 'u':
 				mode = SURVEY;
 				break;
-			case 'C':
+			case 'F':
 				set_validate_fcs(0);
 				break;
-			case 'D':
-				daemonize();
+			case 'a':
+				show_all_aps = 1;
+				break;
+			case 'U':
+				show_utf8_ssid = 1;
 				break;
 			default:
-				usage(argv[0]);
+				wash_usage(argv[0]);
 				goto end;
 		}
 
@@ -126,17 +204,24 @@ int main(int argc, char *argv[])
 		}
 	}
 
+	if(get_wifi_band() == 0) set_wifi_band(BG_BAND);
+
 	/* The interface value won't be set if capture files were specified; else, there should have been an interface specified */
 	if(!get_iface() && source != PCAP_FILE)
 	{
-		usage(argv[0]);
+		wash_usage(argv[0]);
 		goto end;
+	}
+	else if(get_iface())
+	{
+		/* Get the MAC address of the specified interface */
+		read_iface_mac();
 	}
 
 	if(get_iface() && source == PCAP_FILE)
 	{
 		cprintf(CRITICAL, "[X] ERROR: -i and -f options cannot be used together.\n");
-		usage(argv[0]);
+		wash_usage(argv[0]);
 		goto end;
 	}
 
@@ -144,19 +229,6 @@ int main(int argc, char *argv[])
 	if(source == PCAP_FILE)
 	{
 		passive = 1;
-	}
-
-	/* Open the output file, if any. If none, write to stdout. */
-	if(out_file)
-	{
-		fp = fopen(out_file, "wb");
-		if(!fp)
-		{
-			cprintf(CRITICAL, "[X] ERROR: Failed to open '%s' for writing\n", out_file);
-			goto end;
-		}
-
-		set_log_file(fp);
 	}
 
 	/* 
@@ -197,6 +269,7 @@ int main(int argc, char *argv[])
 		if(pcap_compile(get_handle(), &bpf, PACKET_FILTER, 0, 0) != 0)
 		{
 			cprintf(CRITICAL, "[X] ERROR: Failed to compile packet filter\n");
+			cprintf(CRITICAL, "[X] PCAP: %s\n", pcap_geterr(get_handle()));
 			goto end;
 		}
 		
@@ -215,9 +288,7 @@ int main(int argc, char *argv[])
 
 end:
 	globule_deinit();
-	sql_cleanup();
 	if(bssid) free(bssid);
-	if(out_file) free(out_file);
 	if(wpsmon.fp) fclose(wpsmon.fp);
 	return ret_val;
 }
@@ -251,14 +322,20 @@ void monitor(char *bssid, int passive, int source, int channel, int mode)
         		act.sa_handler = sigalrm_handler;
         		sigaction (SIGALRM, &act, 0);
 			ualarm(CHANNEL_INTERVAL, CHANNEL_INTERVAL);
-			change_channel(1);
+			int startchan = 1;
+			if(get_wifi_band() == AN_BAND)
+				startchan = 34;
+			change_channel(startchan);
 		}
 	}
 
 	if(!header_printed)
 	{
-		cprintf(INFO, "BSSID                  Channel       RSSI       WPS Version       WPS Locked        ESSID\n");
-		cprintf(INFO, "---------------------------------------------------------------------------------------------------------------\n");
+		if(!json_mode) {
+			fprintf  (stdout, "BSSID               Ch  dBm  WPS  Lck  Vendor    ESSID\n");
+			//fprintf(stdout, "00:11:22:33:44:55  104  -77  1.0  Yes  Bloatcom  0123456789abcdef0123456789abcdef\n");
+			fprintf  (stdout, "--------------------------------------------------------------------------------\n");
+		}
 		header_printed = 1;
 	}
 
@@ -290,7 +367,8 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
         }
 
 	rt_header = (struct radio_tap_header *) radio_header(packet, header->len);
-	frame_header = (struct dot11_frame_header *) (packet + rt_header->len);
+	size_t rt_header_len = end_le16toh(rt_header->len);
+	frame_header = (struct dot11_frame_header *) (packet + rt_header_len);
 
 	/* If a specific BSSID was specified, only parse packets from that BSSID */
 	if(!is_target(frame_header))
@@ -300,6 +378,7 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 
 	set_ssid(NULL);
 	bssid = (char *) mac2str(frame_header->addr3, ':');
+	set_bssid((unsigned char *) frame_header->addr3);
 
 	if(bssid)
 	{
@@ -307,6 +386,11 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 		   (target != NULL && strcmp(bssid, target) == 0))
 		{
 			channel = parse_beacon_tags(packet, header->len);
+			if(channel == 0) {
+				// It seems 5 GHz APs do not set channel tags.
+				// FIXME: get channel by parsing radiotap header
+				channel = get_channel();
+			}
 			rssi = signal_strength(packet, header->len);
 			ssid = (char *) get_ssid();
 
@@ -317,15 +401,18 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 				channel_changed = 1;
 			}
 
-			if(frame_header->fc.sub_type == PROBE_RESPONSE ||
-                                   frame_header->fc.sub_type == SUBTYPE_BEACON)
-			{
+			unsigned fsub_type = frame_header->fc & end_htole16(IEEE80211_FCTL_STYPE);
+
+			int is_beacon = fsub_type == end_htole16(IEEE80211_STYPE_BEACON);
+			int is_probe_resp = fsub_type == end_htole16(IEEE80211_STYPE_PROBE_RESP);
+
+			if(is_probe_resp || is_beacon) {
 				wps_parsed = parse_wps_parameters(packet, header->len, wps);
+				if(is_beacon || !get_ap_vendor(bssid)) set_ap_vendor(bssid);
 			}
-	
 			if(!is_done(bssid) && (get_channel() == channel || source == PCAP_FILE))
 			{
-				if(frame_header->fc.sub_type == SUBTYPE_BEACON && 
+				if(is_beacon && 
 				   mode == SCAN && 
 				   !passive && 
 				   should_probe(bssid))
@@ -334,13 +421,9 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 					probe_sent = 1;
 				}
 		
-				if(!insert(bssid, ssid, wps, encryption, rssi))
+				if(!json_mode && (!was_printed(bssid) && (wps->version > 0 || show_all_aps == 1)))
 				{
-					update(bssid, ssid, wps, encryption);
-				}
-				else if(wps->version > 0)
-				{
-					switch(wps->locked)
+					if(wps->version > 0) switch(wps->locked)
 					{
 						case WPSLOCKED:
 							lock_display = YES;
@@ -349,9 +432,19 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 						case UNSPECIFIED:
 							lock_display = NO;
 							break;
-					}
+					} else lock_display = NO;
 
-					cprintf(INFO, "%17s      %2d            %.2d        %d.%d               %s               %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, ssid);
+					char* vendor = get_vendor_string(get_ap_vendor(bssid));
+					char* sane_ssid = sanitize_string(ssid);
+
+					if(show_utf8_ssid && verifyssid(ssid))
+						strcpy(sane_ssid,ssid);
+
+					if(wps->version > 0)
+						fprintf(stdout, "%17s  %3d  %.2d  %d.%d  %3s  %8s  %s\n", bssid, channel, rssi, (wps->version >> 4), (wps->version & 0x0F), lock_display, vendor ? vendor : "        ", sane_ssid);
+					else
+						fprintf(stdout, "%17s  %3d  %.2d            %8s  %s\n", bssid, channel, rssi, vendor ? vendor : "        ", sane_ssid);
+					free(sane_ssid);
 				}
 
 				if(probe_sent)
@@ -363,18 +456,18 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 				 * If there was no WPS information, then the AP does not support WPS and we should ignore it from here on.
 				 * If this was a probe response, then we've gotten all WPS info we can get from this AP and should ignore it from here on.
 				 */
-				if(!wps_parsed || frame_header->fc.sub_type == PROBE_RESPONSE)
+				if(!wps_parsed || is_probe_resp)
 				{
 					mark_ap_complete(bssid);
+					if(json_mode && (show_all_aps || wps->version > 0)) {
+						char *json_string = wps_data_to_json(bssid, ssid, channel, rssi, get_ap_vendor(bssid), wps);
+						fprintf(stdout, "%s\n", json_string);
+						fflush(stdout);
+						free(json_string);
+					}
 				}
 	
 			}
-		}
-
-		/* Only update received signal strength if we are on the same channel as the AP, otherwise power measurements are screwy */
-		if(channel == get_channel())
-		{
-			update_ap_power(bssid, rssi);
 		}
 
 		free(bssid);
@@ -383,6 +476,7 @@ void parse_wps_settings(const u_char *packet, struct pcap_pkthdr *header, char *
 
 end:
 	if(wps) free(wps);
+	set_bssid((unsigned char *) NULL_MAC);
 
 	return;
 }
@@ -396,7 +490,7 @@ void send_probe_request(unsigned char *bssid, char *essid)
 	probe = build_wps_probe_request(bssid, essid, &probe_size);
 	if(probe)
 	{
-		pcap_inject(get_handle(), probe, probe_size);
+		send_packet(probe, probe_size, 0);
 		free((void *) probe);
 	}
 
@@ -409,25 +503,34 @@ void sigalrm_handler(int x)
 	next_channel();
 }
 
-void usage(char *prog)
+static void print_header(void) {
+	fprintf(stderr, "\nWash v%s WiFi Protected Setup Scan Tool\n", get_version());
+        fprintf(stderr, "Copyright (c) 2011, Tactical Network Solutions, Craig Heffner\n\n");
+}
+
+static void wash_usage(char *prog)
 {
+	print_header();
+
 	fprintf(stderr, "Required Arguments:\n");
 	fprintf(stderr, "\t-i, --interface=<iface>              Interface to capture packets on\n");
 	fprintf(stderr, "\t-f, --file [FILE1 FILE2 FILE3 ...]   Read packets from capture files\n");
 
 	fprintf(stderr, "\nOptional Arguments:\n");
 	fprintf(stderr, "\t-c, --channel=<num>                  Channel to listen on [auto]\n");
-	fprintf(stderr, "\t-o, --out-file=<file>                Write data to file\n");
 	fprintf(stderr, "\t-n, --probes=<num>                   Maximum number of probes to send to each AP in scan mode [%d]\n", DEFAULT_MAX_NUM_PROBES);
-	fprintf(stderr, "\t-D, --daemonize                      Daemonize wash\n");
-	fprintf(stderr, "\t-C, --ignore-fcs                     Ignore frame checksum errors\n");
+	fprintf(stderr, "\t-F, --ignore-fcs                     Ignore frame checksum errors\n");
+	fprintf(stderr, "\t-2, --2ghz                           Use 2.4GHz 802.11 channels\n");
 	fprintf(stderr, "\t-5, --5ghz                           Use 5GHz 802.11 channels\n");
 	fprintf(stderr, "\t-s, --scan                           Use scan mode\n");
 	fprintf(stderr, "\t-u, --survey                         Use survey mode [default]\n");
+	fprintf(stderr, "\t-a, --all                            Show all APs, even those without WPS\n");
+	fprintf(stderr, "\t-j, --json                           print extended WPS info as json\n");
+	fprintf(stderr, "\t-U, --utf8                           Show UTF8 ESSID (does not sanitize ESSID, dangerous)\n");
 	fprintf(stderr, "\t-h, --help                           Show help\n");
 	
 	fprintf(stderr, "\nExample:\n");
-	fprintf(stderr, "\t%s -i mon0\n\n", prog);
+	fprintf(stderr, "\t%s -i wlan0mon\n\n", prog);
 
 	return;
 }

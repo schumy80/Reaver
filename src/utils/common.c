@@ -361,3 +361,53 @@ void * __hide_aliasing_typecast(void *foo)
 {
 	return foo;
 }
+
+char* sanitize_string(const char *s) {
+	if(!s) return strdup("(null)");
+	size_t i,j, l = strlen(s), ls=l;
+	for(i=0;i<ls;i++) if(s[i] < ' ' || s[i] > 127) l += 4;
+	char *new = malloc(l+1);
+	if(!new) return 0;
+	for(i=0,j=0;i<ls;i++) {
+		if(s[i] < ' ' || s[i] > 127) {
+			sprintf(new + j, "\\\\x%02x", s[i] & 0xff);
+			j  += 4;
+		} else new[j] = s[i];
+		j++;
+	}
+	new[j] = 0;
+	return new;
+}
+
+int verifyssid(const unsigned char *s)
+{
+	int i;
+	unsigned char c;
+
+	if(!s || strlen(s)>32) { //32 characters
+		return 0;
+	}
+
+	for (i = 0; (c = s[i++]);) {
+		if ((c & 0x80) == 0) {//ascii flag
+			if(c < 0x20 || c == 0x7f) {
+				return 0;
+			}
+		} else if ((c & 0xe0) == 0xc0) {//utf8 flag
+			if ((s[i++] & 0xc0) != 0x80) {
+				return 0;
+			}
+		} else if ((c & 0xf0) == 0xe0) {//utf8 flag
+			if ((s[i++] & 0xc0) != 0x80 || (s[i++] & 0xc0) != 0x80) {
+				return 0;
+			}
+		} else if ((c & 0xf8) == 0xf0) {//utf8 flag
+			if ((s[i++] & 0xc0) != 0x80 || (s[i++] & 0xc0) != 0x80 || (s[i++] & 0xc0) != 0x80) {
+				return 0;
+			}
+		} else {
+			return 0;
+		}
+	}
+	return 1;
+}

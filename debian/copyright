@@ -1,42 +1,49 @@
 Format: http://dep.debian.net/deps/dep5
-Upstream-Name: reaver-wps
-Source: <http://code.google.com/p/reaver-wps/>
+Upstream-Name: reaver-wps-fork-t6x
+Source: https://github.com/t6x/reaver-wps-fork-t6x
 
 Files: *
 Copyright: 2011, Tactical Network Solutions, Craig Heffner <cheffner@tacnetsol.com>
+ mod by t6_x <t6_x@hotmail.com> & DataHead & Soxrok2212 & Wiire & AAnarchYY & KokoSoft
+           2016, Koko Software, Adrian Warecki <bok@kokosoftware.pl>
 License: GPL-2
 
 Files: src/common/*
 Copyright: 2002-2010, Jouni Malinen <j@w1.fi>
-License: BSD or GPL-2
+License: BSD-3-clause or GPL-2
 
 Files: src/crypto/*
 Copyright: 2002-2010, Jouni Malinen <j@w1.fi> and contributors
-License: BSD or GPL-2
+License: BSD-3-clause or GPL-2
 
 Files: src/tls/*
 Copyright: 2002-2010, Jouni Malinen <j@w1.fi>
-License: BSD or GPL-2
+License: BSD-3-clause or GPL-2
 
 Files: src/tls/libtommath.c
 Copyright: Tom St Denis
-License: Public Domain
+License: public-domain
+ This library was released in public domain by Tom St Denis
 
 Files: src/utils/*
 Copyright: 2002-2010, Jouni Malinen <j@w1.fi>
-License: BSD or GPL-2
+License: BSD-3-clause or GPL-2
 
 Files: src/utils/radiotap*
 Copyright: 2003, 2004 David Young
-License: BSD
+License: BSD-3-clause
+
+Files: src/utils/radiotap.c
+Copyright: 2007 Andy Green <andy@warmcat.com>
+License: BSD-3-clause or GPL-2
 
 Files: src/wps/*
 Copyright: 2007-2009, Jouni Malinen <j@w1.fi>
-License: BSD or GPL-2
+License: BSD-3-clause or GPL-2
 
 Files: src/wps/wps_ufd.c
 Copyright: 2009, Masashi Honma <honma@ictec.co.jp>
-License: BSD or GPL-2
+License: BSD-3-clause or GPL-2
 
 Files: src/lwe/*
 Copyright: 1997-2007, Jean Tourrilhes <jt@hpl.hp.com>
@@ -44,6 +51,7 @@ License: GPL-2
 
 Files: debian/*
 Copyright: 2011 Bartosz Fenski <fenio@debian.org>
+           2018 Offensive Security
 License: GPL-2
 
 License: GPL-2
@@ -63,7 +71,7 @@ License: GPL-2
  On Debian systems, the complete text of the GNU General
  Public License version 2 can be found in "/usr/share/common-licenses/GPL-2".
 
-License: BSD
+License: BSD-3-clause
  Redistribution and use in source and binary forms, with or without
  modification, are permitted provided that the following conditions are
  met:

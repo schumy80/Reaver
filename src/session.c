@@ -33,13 +33,30 @@
 
 #include "session.h"
 
+/* Does the configuration directory exist? Returns 1 for yes, 0 for no. */
+static int configuration_directory_exists()
+{
+	struct stat dirstat;
+	return (stat(CONF_DIR, &dirstat) == 0);
+}
+
+static void gen_sessionfile_name(const char* bssid, char* outbuf) {
+#ifdef SAVETOCURRENT
+	snprintf(outbuf, FILENAME_MAX, "%s.%s", bssid, CONF_EXT);
+#else
+	int cde = configuration_directory_exists();
+	snprintf(outbuf, FILENAME_MAX, "%s%s%s.%s",
+	         cde?CONF_DIR:"", cde?"/":"", bssid, CONF_EXT);
+#endif
+}
+
 int restore_session()
 {
 	struct stat wpstat = { 0 };
 	char line[MAX_LINE_SIZE] = { 0 };
 	char temp[P1_READ_LEN] = { 0 };
-	char *file = NULL;
-	unsigned char *bssid = NULL;
+	char file[FILENAME_MAX];
+	char *bssid = NULL;
 	char answer = 0;
 	FILE *fp = NULL;
 	int ret_val = 0, i = 0;
@@ -50,19 +67,12 @@ int restore_session()
 	 */
 	if(get_session())
 	{
-		file = strdup(get_session());
+		strcpy(file, get_session());
 	}
 	else
 	{
-		file = malloc(FILENAME_MAX);
-		if(!file)
-		{
-			return ret_val;
-		}
-		memset(file, 0, FILENAME_MAX);
-
 		bssid = mac2str(get_bssid(), '\0');
-		snprintf(file, FILENAME_MAX, "%s/%s.%s", CONF_DIR, bssid, CONF_EXT);
+		gen_sessionfile_name(bssid, file);
 		free(bssid);
 	}
 
@@ -70,9 +80,17 @@ int restore_session()
 	 * If a session was explicitly specified, or if the auto detect option was specified,
 	 * then the answer to any of the following questions will be 'yes'.
 	 */
-	if(get_session() || get_auto_detect_options())
+	if(get_session())
 	{
 		answer = 'y';
+	}
+
+	/*
+	 * Do not restore the session when arbitrary string pin is specified.
+	 */
+	if(get_pin_string_mode())
+	{
+		answer = 'n';
 	}
 
 	if(stat(file, &wpstat) == 0)
@@ -93,45 +111,45 @@ int restore_session()
 			if((fp = fopen(file, "r")))
 			{
 				/* Get the key1 index value */
-				if(fgets((char *) &line, MAX_LINE_SIZE, fp) != NULL)
+				if(fgets(line, MAX_LINE_SIZE, fp) != NULL)
 				{
 					set_p1_index(atoi(line));
-					memset((char *) &line, 0, MAX_LINE_SIZE);
+					memset(line, 0, MAX_LINE_SIZE);
 	
 					/* Get the key2 index value */
-					if(fgets((char *) &line, MAX_LINE_SIZE, fp) != NULL)
+					if(fgets(line, MAX_LINE_SIZE, fp) != NULL)
 					{
 						set_p2_index(atoi(line));
-						memset((char *) &line, 0, MAX_LINE_SIZE);
+						memset(line, 0, MAX_LINE_SIZE);
 				
 						/* Get the key status value */
-						if(fgets((char *) &line, MAX_LINE_SIZE, fp) != NULL)
+						if(fgets(line, MAX_LINE_SIZE, fp) != NULL)
 						{
 							set_key_status(atoi(line));
 
 							/* Read in all p1 values */
 							for(i=0; i<P1_SIZE; i++)
 							{
-								memset((char *) &temp, 0, P1_READ_LEN);
+								memset(temp, 0, P1_READ_LEN);
 
-								if(fgets((char *) &temp, P1_READ_LEN, fp) != NULL)
+								if(fgets(temp, P1_READ_LEN, fp) != NULL)
 								{
 									/* NULL out the new line character */
 									temp[P1_STR_LEN] = 0;
-									set_p1(i, (char *) &temp);
+									set_p1(i, temp);
 								}
 							}
 
 							/* Read in all p2 values */
 							for(i=0; i<P2_SIZE; i++)
 							{
-								memset((char *) &temp, 0, P1_READ_LEN);
+								memset(temp, 0, P1_READ_LEN);
 
-								if(fgets((char *) &temp, P2_READ_LEN, fp) != NULL)
+								if(fgets(temp, P2_READ_LEN, fp) != NULL)
 								{
 									/* NULL out the new line character */
 									temp[P2_STR_LEN] = 0;
-									set_p2(i, (char *) &temp);
+									set_p2(i, temp);
 								}
 							}
 
@@ -158,13 +176,12 @@ int restore_session()
 		cprintf(INFO, "[+] Restored previous session\n");
 	}
 
-	free(file);
 	return ret_val;
 }
 
 int save_session()
 {
-	unsigned char *bssid = NULL;
+	char *bssid = NULL;
 	char *wpa_key = NULL, *essid = NULL, *pretty_bssid = NULL;
         char file_name[FILENAME_MAX] = { 0 };
         char line[MAX_LINE_SIZE] = { 0 };
@@ -172,10 +189,12 @@ int save_session()
 	size_t write_size = 0;
         int attempts = 0, ret_val = 0, i = 0;
 	struct wps_data *wps = NULL;
+	int pin_string;
 
 	wps = get_wps();
 	bssid = mac2str(get_bssid(), '\0');
-	pretty_bssid = (char *) mac2str(get_bssid(), ':');
+	pretty_bssid = mac2str(get_bssid(), ':');
+	pin_string = get_pin_string_mode();
 
 	if(wps)
 	{
@@ -183,9 +202,16 @@ int save_session()
 		essid = wps->essid;
 	}
 	
-	if(!bssid || !pretty_bssid)
+	if(!bssid || !pretty_bssid || pin_string)
 	{
-		cprintf(CRITICAL, "[X] ERROR: Failed to save session data (memory error).\n");
+		if (pin_string)
+		{
+			cprintf(VERBOSE, "[*] String pin was specified, nothing to save.\n");
+		}
+		else
+		{
+			cprintf(CRITICAL, "[X] ERROR: Failed to save session data (memory error).\n");
+		}
 	}
 	else
 	{
@@ -195,48 +221,37 @@ int save_session()
 		 */
 		if(get_session())
 		{
-			memcpy((char *) &file_name, get_session(), FILENAME_MAX-1);
+			strcpy(file_name, get_session());
 		}
 		else
-		{	
-			/* 
-			 * If the configuration directory exists, save the session file there; else, save it to the 
-			 * current working directory.
-			 */
-			if(configuration_directory_exists())
-			{
-        			snprintf((char *) &file_name, FILENAME_MAX, "%s/%s.%s", CONF_DIR, bssid, CONF_EXT);
-			}
-			else
-			{
-				snprintf((char *) &file_name, FILENAME_MAX, "%s.%s", bssid, CONF_EXT);
-			}
+		{
+			gen_sessionfile_name(bssid, file_name);
 		}
 
 		/* Don't bother saving anything if nothing has been done */
 		if((get_p1_index() > 0) || (get_p2_index() > 0))
 		{
-			if((fp = fopen((char *) &file_name, "w")))
+			if((fp = fopen(file_name, "w")))
 			{
-				snprintf((char *) &line, MAX_LINE_SIZE, "%d\n", get_p1_index());
-				write_size = strlen((char *) &line);
+				snprintf(line, MAX_LINE_SIZE, "%d\n", get_p1_index());
+				write_size = strlen(line);
 
 				/* Save key1 index value */
-				if(fwrite((char *) &line, 1, write_size, fp) == write_size)
+				if(fwrite(line, 1, write_size, fp) == write_size)
 				{
-					memset((char *) &line, 0, MAX_LINE_SIZE);
-					snprintf((char *) &line, MAX_LINE_SIZE, "%d\n", get_p2_index());
-					write_size = strlen((char *) &line);
+					memset(line, 0, MAX_LINE_SIZE);
+					snprintf(line, MAX_LINE_SIZE, "%d\n", get_p2_index());
+					write_size = strlen(line);
 
 					/* Save key2 index value */
-					if(fwrite((char *) &line, 1, write_size, fp) == write_size)
+					if(fwrite(line, 1, write_size, fp) == write_size)
 					{
-						memset((char *) &line, 0, MAX_LINE_SIZE);
-        		                	snprintf((char *) &line, MAX_LINE_SIZE, "%d\n", get_key_status());
-        		                	write_size = strlen((char *) &line);
+						memset(line, 0, MAX_LINE_SIZE);
+        		                	snprintf(line, MAX_LINE_SIZE, "%d\n", get_key_status());
+        		                	write_size = strlen(line);
 	
 						/* Save key status value */
-						if(fwrite((char *) &line, 1, write_size, fp) == write_size)
+						if(fwrite(line, 1, write_size, fp) == write_size)
 						{
 							/* Save all the p1 values */
 							for(i=0; i<P1_SIZE; i++)
@@ -270,12 +285,10 @@ int save_session()
 							}
 
 							/* If we got an SSID from the WPS data, then use that; else, use whatever was used to associate with the AP */
-							if(!essid || strlen(essid) < 0)
+							if(!essid || strlen(essid) == 0)
 							{
 								essid = get_ssid();
 							}
-
-							update_history(pretty_bssid, essid, attempts, wpa_key);
 
 							ret_val = 1;
 						}
@@ -297,16 +310,3 @@ int save_session()
 	return ret_val;
 }
 
-/* Does the configuration directory exist? Returns 1 for yes, 0 for no. */
-int configuration_directory_exists()
-{
-	struct stat dirstat = { 0 };
-	int retval = 0;
-
-	if(stat(CONF_DIR, &dirstat) == 0)
-	{
-		retval = 1;
-	}
-
-	return retval;
-}

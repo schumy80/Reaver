@@ -1,14 +1,17 @@
 Source: reaver
 Section: net
-Priority: extra
-Maintainer: Bartosz Fenski <fenio@debian.org>
-Build-Depends: debhelper (>= 8.0.0), libpcap-dev, libsqlite3-dev
-Standards-Version: 3.9.2
-Homepage: http://code.google.com/p/reaver-wps/
+Priority: optional
+Maintainer: Kali Developers <devel@kali.org>
+Uploaders: Devon Kearns <dookie@kali.org>
+Build-Depends: debhelper (>= 10), libpcap-dev
+Standards-Version: 4.1.4
+Homepage: https://github.com/t6x/reaver-wps-fork-t6x
+Vcs-Git: git://git.kali.org/packages/reaver.git
+Vcs-Browser: http://git.kali.org/gitweb/?p=packages/reaver.git;a=summary
 
 Package: reaver
 Architecture: any
-Depends: ${shlibs:Depends}, ${misc:Depends}
+Depends: ${shlibs:Depends}, ${misc:Depends}, pixiewps, aircrack-ng
 Description: brute force attack tool against Wifi Protected Setup PIN number
  Reaver performs a brute force attack against an access point's WiFi 
  Protected Setup pin number. 

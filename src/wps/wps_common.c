@@ -22,6 +22,8 @@
 #include "crypto/sha256.h"
 #include "wps_i.h"
 #include "wps_dev_attr.h"
+#include "globule.h"
+#include "pixie.h"
 
 
 void wps_kdf(const u8 *key, const u8 *label_prefix, size_t label_prefix_len,
@@ -81,6 +83,8 @@ int wps_derive_keys(struct wps_data *wps)
 		return -1;
 	}
 
+	wpa_hexdump_buf_key(MSG_DEBUG, "WPS: DH Private Key", wps->dh_privkey); 
+	wpa_hexdump_buf(MSG_DEBUG, "WPS: DH peer Public Key", pubkey);
 	dh_shared = dh5_derive_shared(wps->dh_ctx, pubkey, wps->dh_privkey);
 	dh5_free(wps->dh_ctx);
 	wps->dh_ctx = NULL;
@@ -125,6 +129,12 @@ int wps_derive_keys(struct wps_data *wps)
 	wpa_hexdump_key(MSG_DEBUG, "WPS: KeyWrapKey",
 			wps->keywrapkey, WPS_KEYWRAPKEY_LEN);
 	wpa_hexdump_key(MSG_DEBUG, "WPS: EMSK", wps->emsk, WPS_EMSK_LEN);
+
+	if(pixie.do_pixie) {
+		char buf[4096];
+		pixie_format(wps->authkey, WPS_AUTHKEY_LEN, buf);
+		PIXIE_SET(authkey, buf);
+	}
 
 	return 0;
 }
